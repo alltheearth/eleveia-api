@@ -3,17 +3,11 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from rest_framework.authtoken.models import Token
 
 
 class Escola(models.Model):
-    NIVEIS_CHOICES = [
-        ('infantil', 'Educação Infantil'),
-        ('fundamental_i', 'Ensino Fundamental I'),
-        ('fundamental_ii', 'Ensino Fundamental II'),
-        ('medio', 'Ensino Médio'),
-    ]
-
-    usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='escolas')
+    usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='escolas', null=True, blank=True)
 
     nome_escola = models.CharField(max_length=255)
     cnpj = models.CharField(max_length=20, unique=True)
@@ -28,8 +22,8 @@ class Escola(models.Model):
     estado = models.CharField(max_length=2)
     complemento = models.CharField(max_length=255, blank=True)
 
-    sobre = models.TextField()
-    niveis_ensino = models.JSONField(default=dict)
+    sobre = models.TextField(blank=True)
+    niveis_ensino = models.JSONField(default=dict, blank=True)
 
     criado_em = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)
@@ -37,14 +31,13 @@ class Escola(models.Model):
     class Meta:
         verbose_name = 'Escola'
         verbose_name_plural = 'Escolas'
-        unique_together = ('usuario', 'cnpj')
 
     def __str__(self):
         return self.nome_escola
 
 
 class Contato(models.Model):
-    usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='contatos')
+    usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='contatos', null=True, blank=True)
     escola = models.OneToOneField(Escola, on_delete=models.CASCADE, related_name='contato')
 
     email_principal = models.EmailField()
@@ -61,9 +54,6 @@ class Contato(models.Model):
 
     atualizado_em = models.DateTimeField(auto_now=True)
 
-    class Meta:
-        unique_together = ('usuario', 'escola')
-
     def __str__(self):
         return f"Contato - {self.escola.nome_escola}"
 
@@ -76,7 +66,7 @@ class CalendarioEvento(models.Model):
         ('evento_cultural', '🎉 Evento Cultural'),
     ]
 
-    usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='eventos')
+    usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='eventos', null=True, blank=True)
     escola = models.ForeignKey(Escola, on_delete=models.CASCADE, related_name='eventos')
 
     data = models.DateField()
@@ -90,7 +80,6 @@ class CalendarioEvento(models.Model):
         ordering = ['data']
         verbose_name = 'Evento do Calendário'
         verbose_name_plural = 'Eventos do Calendário'
-        unique_together = ('usuario', 'escola', 'data', 'evento')
 
     def __str__(self):
         return f"{self.evento} - {self.data}"
@@ -102,7 +91,7 @@ class FAQ(models.Model):
         ('inativa', 'Inativa'),
     ]
 
-    usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='faqs')
+    usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='faqs', null=True, blank=True)
     escola = models.ForeignKey(Escola, on_delete=models.CASCADE, related_name='faqs')
 
     pergunta = models.CharField(max_length=500)
@@ -117,7 +106,6 @@ class FAQ(models.Model):
         verbose_name = 'FAQ'
         verbose_name_plural = 'FAQs'
         ordering = ['-criado_em']
-        unique_together = ('usuario', 'escola', 'pergunta')
 
     def __str__(self):
         return self.pergunta
@@ -131,7 +119,7 @@ class Documento(models.Model):
         ('erro', 'Erro'),
     ]
 
-    usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='documentos')
+    usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='documentos', null=True, blank=True)
     escola = models.ForeignKey(Escola, on_delete=models.CASCADE, related_name='documentos')
 
     nome = models.CharField(max_length=255)
@@ -143,14 +131,13 @@ class Documento(models.Model):
 
     class Meta:
         ordering = ['-criado_em']
-        unique_together = ('usuario', 'escola', 'nome')
 
     def __str__(self):
         return self.nome
 
 
 class Dashboard(models.Model):
-    usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='dashboards')
+    usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='dashboards', null=True, blank=True)
     escola = models.OneToOneField(Escola, on_delete=models.CASCADE, related_name='dashboard')
 
     status_agente = models.CharField(max_length=20, default='ativo')
@@ -164,16 +151,16 @@ class Dashboard(models.Model):
 
     atualizado_em = models.DateTimeField(auto_now=True)
 
-    class Meta:
-        unique_together = ('usuario', 'escola')
-
     def __str__(self):
         return f"Dashboard - {self.escola.nome_escola}"
 
 
-# Signal para criar token e dashboard
+# ========================
+# SIGNALS
+# ========================
+
 @receiver(post_save, sender=User)
 def criar_token_usuario(sender, instance=None, created=False, **kwargs):
+    """Cria token automaticamente quando um usuário é criado"""
     if created:
-        from rest_framework.authtoken.models import Token
         Token.objects.create(user=instance)
