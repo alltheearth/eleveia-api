@@ -7,6 +7,7 @@ from rest_framework.authtoken.models import Token
 
 
 class Escola(models.Model):
+    """Modelo para armazenar informações da escola"""
     usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='escolas', null=True, blank=True)
 
     nome_escola = models.CharField(max_length=255)
@@ -31,12 +32,14 @@ class Escola(models.Model):
     class Meta:
         verbose_name = 'Escola'
         verbose_name_plural = 'Escolas'
+        ordering = ['-criado_em']
 
     def __str__(self):
         return self.nome_escola
 
 
 class Contato(models.Model):
+    """Modelo para armazenar contatos das escolas"""
     usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='contatos', null=True, blank=True)
     escola = models.OneToOneField(Escola, on_delete=models.CASCADE, related_name='contato')
 
@@ -54,11 +57,16 @@ class Contato(models.Model):
 
     atualizado_em = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        verbose_name = 'Contato'
+        verbose_name_plural = 'Contatos'
+
     def __str__(self):
         return f"Contato - {self.escola.nome_escola}"
 
 
 class CalendarioEvento(models.Model):
+    """Modelo para armazenar eventos do calendário escolar"""
     TIPO_CHOICES = [
         ('feriado', '📌 Feriado'),
         ('prova', '📝 Prova/Avaliação'),
@@ -86,6 +94,7 @@ class CalendarioEvento(models.Model):
 
 
 class FAQ(models.Model):
+    """Modelo para armazenar perguntas frequentes"""
     STATUS_CHOICES = [
         ('ativa', 'Ativa'),
         ('inativa', 'Inativa'),
@@ -112,6 +121,7 @@ class FAQ(models.Model):
 
 
 class Documento(models.Model):
+    """Modelo para armazenar documentos da escola"""
     STATUS_CHOICES = [
         ('pendente', 'Pendente'),
         ('processando', 'Processando'),
@@ -131,12 +141,15 @@ class Documento(models.Model):
 
     class Meta:
         ordering = ['-criado_em']
+        verbose_name = 'Documento'
+        verbose_name_plural = 'Documentos'
 
     def __str__(self):
         return self.nome
 
 
 class Dashboard(models.Model):
+    """Modelo para armazenar dados do dashboard"""
     usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='dashboards', null=True, blank=True)
     escola = models.OneToOneField(Escola, on_delete=models.CASCADE, related_name='dashboard')
 
@@ -151,6 +164,10 @@ class Dashboard(models.Model):
 
     atualizado_em = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        verbose_name = 'Dashboard'
+        verbose_name_plural = 'Dashboards'
+
     def __str__(self):
         return f"Dashboard - {self.escola.nome_escola}"
 
@@ -164,3 +181,4 @@ def criar_token_usuario(sender, instance=None, created=False, **kwargs):
     """Cria token automaticamente quando um usuário é criado"""
     if created:
         Token.objects.create(user=instance)
+        print(f"✅ Token criado para usuário: {instance.username}")
