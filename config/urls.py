@@ -23,6 +23,7 @@ from eleveai.views import (
     DocumentoViewSet,
     DashboardViewSet,
     UsuarioViewSet,
+    LeadViewSet,
 )
 
 # ============================================
@@ -36,7 +37,7 @@ router.register(r'faqs', FAQViewSet, basename='faq')
 router.register(r'documentos', DocumentoViewSet, basename='documento')
 router.register(r'dashboard', DashboardViewSet, basename='dashboard')
 router.register(r'usuarios', UsuarioViewSet, basename='usuario')
-
+router.register(r'leads', LeadViewSet, basename='lead')
 # ============================================
 # URL PATTERNS
 # ============================================

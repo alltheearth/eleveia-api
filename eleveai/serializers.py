@@ -2,7 +2,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
-from .models import Escola, Contato, CalendarioEvento, FAQ, Dashboard, Documento
+from .models import Escola, Contato, CalendarioEvento, FAQ, Dashboard, Documento, Lead
 
 
 # ==========================================
@@ -204,3 +204,51 @@ class DashboardSerializer(serializers.ModelSerializer):
             'leads_capturados', 'taxa_resolucao', 'novos_hoje', 'atualizado_em'
         ]
         read_only_fields = ['id', 'usuario_id', 'escola_nome', 'atualizado_em']
+
+
+class LeadSerializer(serializers.ModelSerializer):
+    """Serializer para Lead"""
+    usuario_id = serializers.IntegerField(source='usuario.id', read_only=True)
+    escola_nome = serializers.CharField(source='escola.nome_escola', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    origem_display = serializers.CharField(source='get_origem_display', read_only=True)
+
+    class Meta:
+        model = Lead
+        fields = [
+            'id', 'usuario_id', 'escola', 'escola_nome',
+            'nome', 'email', 'telefone',
+            'status', 'status_display',
+            'origem', 'origem_display',
+            'observacoes', 'interesses',
+            'contatado_em', 'convertido_em',
+            'criado_em', 'atualizado_em'
+        ]
+        read_only_fields = [
+            'id', 'usuario_id', 'escola_nome',
+            'status_display', 'origem_display',
+            'criado_em', 'atualizado_em'
+        ]
+
+    def create(self, validated_data):
+        """Criar lead associado ao usuário logado"""
+        validated_data['usuario'] = self.context['request'].user
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        """Atualizar lead (apenas o dono pode)"""
+        if instance.usuario != self.context['request'].user:
+            raise serializers.ValidationError("Você não tem permissão para atualizar este lead.")
+
+        # Se status mudou para 'contato', atualizar contatado_em
+        if 'status' in validated_data:
+            if validated_data['status'] == 'contato' and instance.status == 'novo':
+                from django.utils import timezone
+                validated_data['contatado_em'] = timezone.now()
+
+            # Se status mudou para 'conversao', atualizar convertido_em
+            if validated_data['status'] == 'conversao' and instance.status != 'conversao':
+                from django.utils import timezone
+                validated_data['convertido_em'] = timezone.now()
+
+        return super().update(instance, validated_data)

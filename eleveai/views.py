@@ -17,7 +17,9 @@ from .serializers import (
     DashboardSerializer,
     UsuarioSerializer,
     RegistroSerializer,
-    LoginSerializer
+    LoginSerializer,
+    Lead,
+    LeadSerializer
 )
 
 # ✅ IMPORTAR OS MODELS
@@ -390,3 +392,150 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         if self.request.user.is_staff:
             return User.objects.all()
         return User.objects.filter(id=self.request.user.id)
+
+
+from django.db.models import Count, Q
+from django.utils import timezone
+from datetime import timedelta
+
+
+class LeadViewSet(viewsets.ModelViewSet):
+    """ViewSet para gerenciar Leads"""
+    serializer_class = LeadSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [SearchFilter, OrderingFilter]
+    search_fields = ['nome', 'email', 'telefone']
+    ordering_fields = ['nome', 'criado_em', 'status']
+
+    def get_queryset(self):
+        """Retorna apenas leads do usuário logado"""
+        queryset = Lead.objects.filter(usuario=self.request.user)
+
+        # Filtros via query params
+        escola_id = self.request.query_params.get('escola_id')
+        status = self.request.query_params.get('status')
+        origem = self.request.query_params.get('origem')
+
+        if escola_id:
+            queryset = queryset.filter(escola_id=escola_id)
+        if status and status != 'todos':
+            queryset = queryset.filter(status=status)
+        if origem:
+            queryset = queryset.filter(origem=origem)
+
+        return queryset
+
+    @action(detail=False, methods=['get'])
+    def estatisticas(self, request):
+        """Retorna estatísticas dos leads"""
+        escola_id = request.query_params.get('escola_id')
+
+        queryset = Lead.objects.filter(usuario=request.user)
+        if escola_id:
+            queryset = queryset.filter(escola_id=escola_id)
+
+        stats = {
+            'total': queryset.count(),
+            'novo': queryset.filter(status='novo').count(),
+            'contato': queryset.filter(status='contato').count(),
+            'qualificado': queryset.filter(status='qualificado').count(),
+            'conversao': queryset.filter(status='conversao').count(),
+            'perdido': queryset.filter(status='perdido').count(),
+        }
+
+        # Estatísticas por origem
+        stats['por_origem'] = dict(
+            queryset.values('origem')
+            .annotate(total=Count('id'))
+            .values_list('origem', 'total')
+        )
+
+        # Novos hoje
+        hoje = timezone.now().date()
+        stats['novos_hoje'] = queryset.filter(
+            criado_em__date=hoje
+        ).count()
+
+        # Taxa de conversão
+        if stats['total'] > 0:
+            stats['taxa_conversao'] = round(
+                (stats['conversao'] / stats['total']) * 100, 2
+            )
+        else:
+            stats['taxa_conversao'] = 0
+
+        return Response(stats)
+
+    @action(detail=False, methods=['get'])
+    def recentes(self, request):
+        """Retorna leads mais recentes"""
+        escola_id = request.query_params.get('escola_id')
+        limit = int(request.query_params.get('limit', 10))
+
+        queryset = Lead.objects.filter(usuario=request.user)
+        if escola_id:
+            queryset = queryset.filter(escola_id=escola_id)
+
+        queryset = queryset.order_by('-criado_em')[:limit]
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def mudar_status(self, request, pk=None):
+        """Endpoint dedicado para mudar status do lead"""
+        lead = self.get_object()
+        novo_status = request.data.get('status')
+
+        if novo_status not in dict(Lead.STATUS_CHOICES):
+            return Response(
+                {'erro': 'Status inválido'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        lead.status = novo_status
+
+        # Atualizar timestamps conforme status
+        if novo_status == 'contato' and not lead.contatado_em:
+            lead.contatado_em = timezone.now()
+        elif novo_status == 'conversao' and not lead.convertido_em:
+            lead.convertido_em = timezone.now()
+
+        lead.save()
+
+        serializer = self.get_serializer(lead)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def exportar_csv(self, request):
+        """Exportar leads para CSV"""
+        import csv
+        from django.http import HttpResponse
+
+        escola_id = request.data.get('escola_id')
+        queryset = Lead.objects.filter(usuario=request.user)
+
+        if escola_id:
+            queryset = queryset.filter(escola_id=escola_id)
+
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="leads.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow([
+            'ID', 'Nome', 'Email', 'Telefone', 'Status',
+            'Origem', 'Escola', 'Data Cadastro'
+        ])
+
+        for lead in queryset:
+            writer.writerow([
+                lead.id,
+                lead.nome,
+                lead.email,
+                lead.telefone,
+                lead.get_status_display(),
+                lead.get_origem_display(),
+                lead.escola.nome_escola,
+                lead.criado_em.strftime('%d/%m/%Y %H:%M')
+            ])
+
+        return response

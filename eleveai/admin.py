@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from django.contrib import admin
-from .models import Escola, Contato, CalendarioEvento, FAQ, Dashboard, Documento
+from .models import Escola, Contato, CalendarioEvento, FAQ, Dashboard, Documento, Lead
 
 @admin.register(Escola)
 class EscolaAdmin(admin.ModelAdmin):
@@ -38,3 +38,27 @@ class DashboardAdmin(admin.ModelAdmin):
     list_display = ('escola', 'status_agente', 'interacoes_hoje', 'leads_capturados')
     search_fields = ('escola__nome_escola',)
     readonly_fields = ('atualizado_em',)
+
+
+@admin.register(Lead)
+class LeadAdmin(admin.ModelAdmin):
+    list_display = ('nome', 'email', 'telefone', 'status', 'origem', 'escola', 'criado_em')
+    search_fields = ('nome', 'email', 'telefone', 'escola__nome_escola')
+    list_filter = ('status', 'origem', 'escola', 'criado_em')
+    readonly_fields = ('criado_em', 'atualizado_em', 'contatado_em', 'convertido_em')
+
+    fieldsets = (
+        ('Informações Básicas', {
+            'fields': ('usuario', 'escola', 'nome', 'email', 'telefone')
+        }),
+        ('Status e Origem', {
+            'fields': ('status', 'origem')
+        }),
+        ('Detalhes', {
+            'fields': ('observacoes', 'interesses')
+        }),
+        ('Timestamps', {
+            'fields': ('criado_em', 'atualizado_em', 'contatado_em', 'convertido_em'),
+            'classes': ('collapse',)
+        }),
+    )
