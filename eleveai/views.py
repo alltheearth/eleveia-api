@@ -6,6 +6,15 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.authtoken.models import Token
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
+from django.db.models import Count, Q
+from django.utils import timezone
+from datetime import timedelta
+
+# ✅ IMPORTAR AS PERMISSÕES PERSONALIZADAS
+from .permissions import IsOwnerOrAdmin, IsAdminOrReadOnly
+
+# IsOwnerOrAdmin: Usuários podem fazer CRUD completo (criar, ler, editar, deletar) em seus dados
+# IsAdminOrReadOnly: Apenas leitura para usuários comuns, tudo para admin
 
 # ✅ IMPORTAR OS SERIALIZERS
 from .serializers import (
@@ -84,6 +93,8 @@ def login(request):
                 'email': user.email,
                 'first_name': user.first_name,
                 'last_name': user.last_name,
+                'is_superuser': user.is_superuser,
+                'is_staff': user.is_staff,
             }
         },
         status=status.HTTP_200_OK
@@ -225,20 +236,31 @@ def atualizar_perfil(request):
 
 class EscolaViewSet(viewsets.ModelViewSet):
     serializer_class = EscolaSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsOwnerOrAdmin]
     filter_backends = [SearchFilter, OrderingFilter]
     search_fields = ['nome_escola', 'cnpj', 'cidade']
     ordering_fields = ['nome_escola', 'criado_em']
 
     def get_queryset(self):
-        """Retorna apenas escolas do usuário logado"""
+        """
+        Retorna todas as escolas para admin,
+        apenas escolas do usuário para usuários comuns
+        """
+        if self.request.user.is_superuser or self.request.user.is_staff:
+            return Escola.objects.all()
         return Escola.objects.filter(usuario=self.request.user)
 
     @action(detail=True, methods=['get'])
     def atividade(self, request, pk=None):
         escola = self.get_object()
-        if escola.usuario != request.user:
-            return Response({'erro': 'Acesso negado'}, status=status.HTTP_403_FORBIDDEN)
+
+        # Verifica permissão
+        if not (request.user.is_superuser or request.user.is_staff):
+            if escola.usuario != request.user:
+                return Response(
+                    {'erro': 'Acesso negado'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
 
         atividades = {
             'ultimos_7_dias': [45, 52, 48, 65, 58, 72, 68]
@@ -248,25 +270,37 @@ class EscolaViewSet(viewsets.ModelViewSet):
 
 class ContatoViewSet(viewsets.ModelViewSet):
     serializer_class = ContatoSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsOwnerOrAdmin]
 
     def get_queryset(self):
-        """Retorna apenas contatos do usuário logado"""
+        """Admin vê tudo, usuário comum vê apenas seus contatos"""
+        if self.request.user.is_superuser or self.request.user.is_staff:
+            return Contato.objects.all()
         return Contato.objects.filter(usuario=self.request.user)
 
     @action(detail=False, methods=['get'])
     def by_escola(self, request):
         escola_id = request.query_params.get('escola_id')
         if not escola_id:
-            return Response({'erro': 'escola_id é obrigatório'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'erro': 'escola_id é obrigatório'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        contato = Contato.objects.filter(
-            usuario=request.user,
-            escola_id=escola_id
-        ).first()
+        # Busca o contato
+        if request.user.is_superuser or request.user.is_staff:
+            contato = Contato.objects.filter(escola_id=escola_id).first()
+        else:
+            contato = Contato.objects.filter(
+                usuario=request.user,
+                escola_id=escola_id
+            ).first()
 
         if not contato:
-            return Response({'erro': 'Contato não encontrado'}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {'erro': 'Contato não encontrado'},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
         serializer = self.get_serializer(contato)
         return Response(serializer.data)
@@ -274,28 +308,38 @@ class ContatoViewSet(viewsets.ModelViewSet):
 
 class CalendarioEventoViewSet(viewsets.ModelViewSet):
     serializer_class = CalendarioEventoSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsOwnerOrAdmin]
     filter_backends = [SearchFilter, OrderingFilter]
     search_fields = ['evento']
     ordering_fields = ['data']
 
     def get_queryset(self):
-        """Retorna apenas eventos do usuário logado"""
-        queryset = CalendarioEvento.objects.filter(usuario=self.request.user)
+        """Admin vê tudo, usuário comum vê apenas seus eventos"""
+        if self.request.user.is_superuser or self.request.user.is_staff:
+            queryset = CalendarioEvento.objects.all()
+        else:
+            queryset = CalendarioEvento.objects.filter(usuario=self.request.user)
+
         escola_id = self.request.query_params.get('escola_id')
         if escola_id:
             queryset = queryset.filter(escola_id=escola_id)
+
         return queryset
 
     @action(detail=False, methods=['get'])
     def proximos_eventos(self, request):
-        from django.utils import timezone
         escola_id = request.query_params.get('escola_id')
 
-        queryset = CalendarioEvento.objects.filter(
-            usuario=request.user,
-            data__gte=timezone.now().date()
-        )
+        if request.user.is_superuser or request.user.is_staff:
+            queryset = CalendarioEvento.objects.filter(
+                data__gte=timezone.now().date()
+            )
+        else:
+            queryset = CalendarioEvento.objects.filter(
+                usuario=request.user,
+                data__gte=timezone.now().date()
+            )
+
         if escola_id:
             queryset = queryset.filter(escola_id=escola_id)
 
@@ -305,14 +349,18 @@ class CalendarioEventoViewSet(viewsets.ModelViewSet):
 
 class FAQViewSet(viewsets.ModelViewSet):
     serializer_class = FAQSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsOwnerOrAdmin]
     filter_backends = [SearchFilter, OrderingFilter]
     search_fields = ['pergunta', 'categoria']
     ordering_fields = ['categoria', 'criado_em']
 
     def get_queryset(self):
-        """Retorna apenas FAQs do usuário logado"""
-        queryset = FAQ.objects.filter(usuario=self.request.user)
+        """Admin vê tudo, usuário comum vê apenas suas FAQs"""
+        if self.request.user.is_superuser or self.request.user.is_staff:
+            queryset = FAQ.objects.all()
+        else:
+            queryset = FAQ.objects.filter(usuario=self.request.user)
+
         escola_id = self.request.query_params.get('escola_id')
         status_filter = self.request.query_params.get('status')
 
@@ -326,11 +374,15 @@ class FAQViewSet(viewsets.ModelViewSet):
 
 class DocumentoViewSet(viewsets.ModelViewSet):
     serializer_class = DocumentoSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsOwnerOrAdmin]
 
     def get_queryset(self):
-        """Retorna apenas documentos do usuário logado"""
-        queryset = Documento.objects.filter(usuario=self.request.user)
+        """Admin vê tudo, usuário comum vê apenas seus documentos"""
+        if self.request.user.is_superuser or self.request.user.is_staff:
+            queryset = Documento.objects.all()
+        else:
+            queryset = Documento.objects.filter(usuario=self.request.user)
+
         escola_id = self.request.query_params.get('escola_id')
         status_filter = self.request.query_params.get('status')
 
@@ -344,10 +396,14 @@ class DocumentoViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def nao_processados(self, request):
         escola_id = request.query_params.get('escola_id')
-        queryset = Documento.objects.filter(
-            usuario=request.user,
-            status__in=['pendente', 'erro']
-        )
+
+        if request.user.is_superuser or request.user.is_staff:
+            queryset = Documento.objects.filter(status__in=['pendente', 'erro'])
+        else:
+            queryset = Documento.objects.filter(
+                usuario=request.user,
+                status__in=['pendente', 'erro']
+            )
 
         if escola_id:
             queryset = queryset.filter(escola_id=escola_id)
@@ -358,68 +414,79 @@ class DocumentoViewSet(viewsets.ModelViewSet):
 
 class DashboardViewSet(viewsets.ModelViewSet):
     serializer_class = DashboardSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsOwnerOrAdmin]
 
     def get_queryset(self):
-        """Retorna apenas dashboards do usuário logado"""
+        """Admin vê tudo, usuário comum vê apenas seus dashboards"""
+        if self.request.user.is_superuser or self.request.user.is_staff:
+            return Dashboard.objects.all()
         return Dashboard.objects.filter(usuario=self.request.user)
 
     @action(detail=False, methods=['get'])
     def by_escola(self, request):
         escola_id = request.query_params.get('escola_id')
         if not escola_id:
-            return Response({'erro': 'escola_id é obrigatório'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'erro': 'escola_id é obrigatório'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        dashboard = Dashboard.objects.filter(
-            usuario=request.user,
-            escola_id=escola_id
-        ).first()
+        # Busca o dashboard
+        if request.user.is_superuser or request.user.is_staff:
+            dashboard = Dashboard.objects.filter(escola_id=escola_id).first()
+        else:
+            dashboard = Dashboard.objects.filter(
+                usuario=request.user,
+                escola_id=escola_id
+            ).first()
 
         if not dashboard:
-            return Response({'erro': 'Dashboard não encontrado'}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {'erro': 'Dashboard não encontrado'},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
         serializer = self.get_serializer(dashboard)
         return Response(serializer.data)
 
 
 class UsuarioViewSet(viewsets.ModelViewSet):
-    """ViewSet para gerenciar usuários (apenas admin)"""
+    """ViewSet para gerenciar usuários (apenas admin tem acesso completo)"""
     queryset = User.objects.all()
     serializer_class = UsuarioSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        if self.request.user.is_staff:
+        """Admin vê todos, usuário comum vê apenas ele mesmo"""
+        if self.request.user.is_superuser or self.request.user.is_staff:
             return User.objects.all()
         return User.objects.filter(id=self.request.user.id)
-
-
-from django.db.models import Count, Q
-from django.utils import timezone
-from datetime import timedelta
 
 
 class LeadViewSet(viewsets.ModelViewSet):
     """ViewSet para gerenciar Leads"""
     serializer_class = LeadSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsOwnerOrAdmin]
     filter_backends = [SearchFilter, OrderingFilter]
     search_fields = ['nome', 'email', 'telefone']
     ordering_fields = ['nome', 'criado_em', 'status']
 
     def get_queryset(self):
-        """Retorna apenas leads do usuário logado"""
-        queryset = Lead.objects.filter(usuario=self.request.user)
+        """Admin vê tudo, usuário comum vê apenas seus leads"""
+        if self.request.user.is_superuser or self.request.user.is_staff:
+            queryset = Lead.objects.all()
+        else:
+            queryset = Lead.objects.filter(usuario=self.request.user)
 
         # Filtros via query params
         escola_id = self.request.query_params.get('escola_id')
-        status = self.request.query_params.get('status')
+        status_filter = self.request.query_params.get('status')
         origem = self.request.query_params.get('origem')
 
         if escola_id:
             queryset = queryset.filter(escola_id=escola_id)
-        if status and status != 'todos':
-            queryset = queryset.filter(status=status)
+        if status_filter and status_filter != 'todos':
+            queryset = queryset.filter(status=status_filter)
         if origem:
             queryset = queryset.filter(origem=origem)
 
@@ -430,7 +497,11 @@ class LeadViewSet(viewsets.ModelViewSet):
         """Retorna estatísticas dos leads"""
         escola_id = request.query_params.get('escola_id')
 
-        queryset = Lead.objects.filter(usuario=request.user)
+        if request.user.is_superuser or request.user.is_staff:
+            queryset = Lead.objects.all()
+        else:
+            queryset = Lead.objects.filter(usuario=request.user)
+
         if escola_id:
             queryset = queryset.filter(escola_id=escola_id)
 
@@ -472,7 +543,11 @@ class LeadViewSet(viewsets.ModelViewSet):
         escola_id = request.query_params.get('escola_id')
         limit = int(request.query_params.get('limit', 10))
 
-        queryset = Lead.objects.filter(usuario=request.user)
+        if request.user.is_superuser or request.user.is_staff:
+            queryset = Lead.objects.all()
+        else:
+            queryset = Lead.objects.filter(usuario=request.user)
+
         if escola_id:
             queryset = queryset.filter(escola_id=escola_id)
 
@@ -512,7 +587,11 @@ class LeadViewSet(viewsets.ModelViewSet):
         from django.http import HttpResponse
 
         escola_id = request.data.get('escola_id')
-        queryset = Lead.objects.filter(usuario=request.user)
+
+        if request.user.is_superuser or request.user.is_staff:
+            queryset = Lead.objects.all()
+        else:
+            queryset = Lead.objects.filter(usuario=request.user)
 
         if escola_id:
             queryset = queryset.filter(escola_id=escola_id)
