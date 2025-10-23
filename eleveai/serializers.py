@@ -254,7 +254,7 @@ class LeadSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
 class ContatoSerializer(serializers.ModelSerializer):
-    """Serializer para Contatos Gerais"""
+    """Serializer para Contatos"""
     usuario_id = serializers.IntegerField(source='usuario.id', read_only=True)
     escola_nome = serializers.CharField(source='escola.nome_escola', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
@@ -290,8 +290,8 @@ class ContatoSerializer(serializers.ModelSerializer):
 
         return super().update(instance, validated_data)
 
-    def validate_email(self, value):
-        """Validar email"""
+    """def validate_email(self, value):
+        """"Validar email""""
         if not value:
             raise serializers.ValidationError("Email é obrigatório")
 
@@ -308,15 +308,15 @@ class ContatoSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Já existe um contato com este email nesta escola.")
 
         return value
-
+"""
     def validate_telefone(self, value):
         """Validar telefone"""
         if not value:
             raise serializers.ValidationError("Telefone é obrigatório")
         return value
 
-    def validate_nome(self, value):
-        """Validar nome"""
+    """def validate_nome(self, value):
+        """"Validar nome""""
         if not value or len(value.strip()) < 3:
             raise serializers.ValidationError("Nome deve ter no mínimo 3 caracteres")
-        return value.strip()
+        return value.strip()"""
