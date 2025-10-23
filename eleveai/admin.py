@@ -9,10 +9,33 @@ class EscolaAdmin(admin.ModelAdmin):
     search_fields = ('nome_escola', 'cnpj', 'cidade')
     list_filter = ('cidade', 'estado', 'criado_em')
 
+
 @admin.register(Contato)
-class ContatoAdmin(admin.ModelAdmin):
-    list_display = ('escola', 'email_principal', 'telefone_principal')
-    search_fields = ('escola__nome_escola', 'email_principal')
+class ContatoGeralAdmin(admin.ModelAdmin):
+    list_display = ('id', 'nome', 'email', 'telefone', 'status', 'origem', 'escola', 'criado_em')
+    search_fields = ('nome', 'email', 'telefone', 'escola__nome_escola', 'tags')
+    list_filter = ('status', 'origem', 'escola', 'criado_em')
+    readonly_fields = ('criado_em', 'atualizado_em')
+
+    fieldsets = (
+        ('Informações Básicas', {
+            'fields': ('usuario', 'escola', 'nome', 'email', 'telefone', 'data_nascimento')
+        }),
+        ('Status e Origem', {
+            'fields': ('status', 'origem')
+        }),
+        ('Detalhes', {
+            'fields': ('observacoes', 'tags', 'ultima_interacao')
+        }),
+        ('Timestamps', {
+            'fields': ('criado_em', 'atualizado_em'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    date_hierarchy = 'criado_em'
+    ordering = ('-criado_em',)
+    list_per_page = 50
 
 @admin.register(CalendarioEvento)
 class CalendarioEventoAdmin(admin.ModelAdmin):

@@ -113,8 +113,8 @@ class EscolaSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
 
-class ContatoSerializer(serializers.ModelSerializer):
-    """Serializer para Contato"""
+"""class ContatoSerializer(serializers.ModelSerializer):
+    """"Serializer para Contato""""
     usuario_id = serializers.IntegerField(source='usuario.id', read_only=True)
     escola_nome = serializers.CharField(source='escola.nome_escola', read_only=True)
 
@@ -129,9 +129,9 @@ class ContatoSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'usuario_id', 'escola_nome', 'atualizado_em']
 
     def create(self, validated_data):
-        """Criar contato associado ao usuário logado"""
+        """"Criar contato associado ao usuário logado""""
         validated_data['usuario'] = self.context['request'].user
-        return super().create(validated_data)
+        return super().create(validated_data) """
 
 
 class CalendarioEventoSerializer(serializers.ModelSerializer):
@@ -252,3 +252,71 @@ class LeadSerializer(serializers.ModelSerializer):
                 validated_data['convertido_em'] = timezone.now()
 
         return super().update(instance, validated_data)
+
+class ContatoSerializer(serializers.ModelSerializer):
+    """Serializer para Contatos Gerais"""
+    usuario_id = serializers.IntegerField(source='usuario.id', read_only=True)
+    escola_nome = serializers.CharField(source='escola.nome_escola', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    origem_display = serializers.CharField(source='get_origem_display', read_only=True)
+
+    class Meta:
+        model = Contato
+        fields = [
+            'id', 'usuario_id', 'escola', 'escola_nome',
+            'nome', 'email', 'telefone',
+            'data_nascimento',
+            'status', 'status_display',
+            'origem', 'origem_display',
+            'ultima_interacao', 'observacoes', 'tags',
+            'criado_em', 'atualizado_em'
+        ]
+        read_only_fields = [
+            'id', 'usuario_id', 'escola_nome',
+            'status_display', 'origem_display',
+            'criado_em', 'atualizado_em'
+        ]
+
+    def create(self, validated_data):
+        """Criar contato associado ao usuário logado"""
+        validated_data['usuario'] = self.context['request'].user
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        """Atualizar contato (apenas o dono pode)"""
+        if instance.usuario != self.context['request'].user:
+            if not (self.context['request'].user.is_superuser or self.context['request'].user.is_staff):
+                raise serializers.ValidationError("Você não tem permissão para atualizar este contato.")
+
+        return super().update(instance, validated_data)
+
+    def validate_email(self, value):
+        """Validar email"""
+        if not value:
+            raise serializers.ValidationError("Email é obrigatório")
+
+        # Verificar se email já existe para esta escola
+        request = self.context.get('request')
+        escola_id = self.initial_data.get('escola')
+
+        # Se estiver atualizando, excluir o próprio registro da verificação
+        queryset = Contato.objects.filter(email=value, escola_id=escola_id)
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+
+        if queryset.exists():
+            raise serializers.ValidationError("Já existe um contato com este email nesta escola.")
+
+        return value
+
+    def validate_telefone(self, value):
+        """Validar telefone"""
+        if not value:
+            raise serializers.ValidationError("Telefone é obrigatório")
+        return value
+
+    def validate_nome(self, value):
+        """Validar nome"""
+        if not value or len(value.strip()) < 3:
+            raise serializers.ValidationError("Nome deve ter no mínimo 3 caracteres")
+        return value.strip()

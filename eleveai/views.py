@@ -10,6 +10,14 @@ from django.db.models import Count, Q
 from django.utils import timezone
 from datetime import timedelta
 
+
+# eleveai/views.py - ADICIONAR ao arquivo existente
+
+# Adicione este import no topo do arquivo
+from .models import Contato  # Adicionar junto com os outros imports de models
+from .serializers import ContatoSerializer  # Adicionar junto com os outros imports de serializers
+
+
 # ✅ IMPORTAR AS PERMISSÕES PERSONALIZADAS
 from .permissions import IsOwnerOrAdmin, IsAdminOrReadOnly
 
@@ -268,12 +276,12 @@ class EscolaViewSet(viewsets.ModelViewSet):
         return Response(atividades)
 
 
-class ContatoViewSet(viewsets.ModelViewSet):
+"""class ContatoViewSet(viewsets.ModelViewSet):
     serializer_class = ContatoSerializer
     permission_classes = [IsOwnerOrAdmin]
 
     def get_queryset(self):
-        """Admin vê tudo, usuário comum vê apenas seus contatos"""
+        """"Admin vê tudo, usuário comum vê apenas seus contatos""""
         if self.request.user.is_superuser or self.request.user.is_staff:
             return Contato.objects.all()
         return Contato.objects.filter(usuario=self.request.user)
@@ -304,7 +312,7 @@ class ContatoViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(contato)
         return Response(serializer.data)
-
+"""
 
 class CalendarioEventoViewSet(viewsets.ModelViewSet):
     serializer_class = CalendarioEventoSerializer
@@ -618,3 +626,188 @@ class LeadViewSet(viewsets.ModelViewSet):
             ])
 
         return response
+
+class ContatoViewSet(viewsets.ModelViewSet):
+    """ViewSet para gerenciar Contatos Gerais"""
+    serializer_class = ContatoSerializer
+    permission_classes = [IsOwnerOrAdmin]
+    filter_backends = [SearchFilter, OrderingFilter]
+    search_fields = ['nome', 'email', 'telefone', 'tags']
+    ordering_fields = ['nome', 'criado_em', 'status', 'ultima_interacao']
+
+    def get_queryset(self):
+        """Admin vê tudo, usuário comum vê apenas seus contatos"""
+        if self.request.user.is_superuser or self.request.user.is_staff:
+            queryset = Contato.objects.all()
+        else:
+            queryset = Contato.objects.filter(usuario=self.request.user)
+
+        # Filtros via query params
+        escola_id = self.request.query_params.get('escola_id')
+        status_filter = self.request.query_params.get('status')
+        origem = self.request.query_params.get('origem')
+
+        if escola_id:
+            queryset = queryset.filter(escola_id=escola_id)
+        if status_filter and status_filter != 'todos':
+            queryset = queryset.filter(status=status_filter)
+        if origem:
+            queryset = queryset.filter(origem=origem)
+
+        return queryset
+
+    @action(detail=False, methods=['get'])
+    def estatisticas(self, request):
+        """Retorna estatísticas dos contatos"""
+        escola_id = request.query_params.get('escola_id')
+
+        if request.user.is_superuser or request.user.is_staff:
+            queryset = Contato.objects.all()
+        else:
+            queryset = Contato.objects.filter(usuario=request.user)
+
+        if escola_id:
+            queryset = queryset.filter(escola_id=escola_id)
+
+        stats = {
+            'total': queryset.count(),
+            'ativos': queryset.filter(status='ativo').count(),
+            'inativos': queryset.filter(status='inativo').count(),
+        }
+
+        # Estatísticas por origem
+        stats['por_origem'] = dict(
+            queryset.values('origem')
+            .annotate(total=Count('id'))
+            .values_list('origem', 'total')
+        )
+
+        # Novos hoje
+        hoje = timezone.now().date()
+        stats['novos_hoje'] = queryset.filter(
+            criado_em__date=hoje
+        ).count()
+
+        # Contatos com interação recente (últimos 7 dias)
+        sete_dias_atras = timezone.now() - timedelta(days=7)
+        stats['interacoes_recentes'] = queryset.filter(
+            ultima_interacao__gte=sete_dias_atras
+        ).count()
+
+        return Response(stats)
+
+    @action(detail=False, methods=['get'])
+    def recentes(self, request):
+        """Retorna contatos mais recentes"""
+        escola_id = request.query_params.get('escola_id')
+        limit = int(request.query_params.get('limit', 10))
+
+        if request.user.is_superuser or request.user.is_staff:
+            queryset = Contato.objects.all()
+        else:
+            queryset = Contato.objects.filter(usuario=request.user)
+
+        if escola_id:
+            queryset = queryset.filter(escola_id=escola_id)
+
+        queryset = queryset.order_by('-criado_em')[:limit]
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def registrar_interacao(self, request, pk=None):
+        """Endpoint dedicado para registrar última interação"""
+        contato = self.get_object()
+
+        contato.ultima_interacao = timezone.now()
+        contato.save()
+
+        serializer = self.get_serializer(contato)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def mudar_status(self, request, pk=None):
+        """Endpoint dedicado para mudar status do contato"""
+        contato = self.get_object()
+        novo_status = request.data.get('status')
+
+        if novo_status not in dict(Contato.STATUS_CHOICES):
+            return Response(
+                {'erro': 'Status inválido'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        contato.status = novo_status
+        contato.save()
+
+        serializer = self.get_serializer(contato)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def exportar_csv(self, request):
+        """Exportar contatos para CSV"""
+        import csv
+        from django.http import HttpResponse
+
+        escola_id = request.data.get('escola_id')
+
+        if request.user.is_superuser or request.user.is_staff:
+            queryset = Contato.objects.all()
+        else:
+            queryset = Contato.objects.filter(usuario=request.user)
+
+        if escola_id:
+            queryset = queryset.filter(escola_id=escola_id)
+
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="contatos.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow([
+            'ID', 'Nome', 'Email', 'Telefone', 'Status',
+            'Origem', 'Data Nascimento', 'Escola',
+            'Última Interação', 'Data Cadastro', 'Tags'
+        ])
+
+        for contato in queryset:
+            writer.writerow([
+                contato.id,
+                contato.nome,
+                contato.email,
+                contato.telefone,
+                contato.get_status_display(),
+                contato.get_origem_display(),
+                contato.data_nascimento.strftime('%d/%m/%Y') if contato.data_nascimento else '',
+                contato.escola.nome_escola,
+                contato.ultima_interacao.strftime('%d/%m/%Y %H:%M') if contato.ultima_interacao else '',
+                contato.criado_em.strftime('%d/%m/%Y %H:%M'),
+                contato.tags
+            ])
+
+        return response
+
+    @action(detail=False, methods=['get'])
+    def por_tag(self, request):
+        """Buscar contatos por tag específica"""
+        tag = request.query_params.get('tag')
+        escola_id = request.query_params.get('escola_id')
+
+        if not tag:
+            return Response(
+                {'erro': 'Tag é obrigatória'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if request.user.is_superuser or request.user.is_staff:
+            queryset = Contato.objects.all()
+        else:
+            queryset = Contato.objects.filter(usuario=request.user)
+
+        if escola_id:
+            queryset = queryset.filter(escola_id=escola_id)
+
+        # Buscar contatos que contenham a tag
+        queryset = queryset.filter(tags__icontains=tag)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
