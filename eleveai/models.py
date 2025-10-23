@@ -274,14 +274,14 @@ class Contato(models.Model):
     usuario = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name='contatos_gerais',
+        related_name='contatos',
         null=True,
         blank=True
     )
     escola = models.ForeignKey(
         Escola,
         on_delete=models.CASCADE,
-        related_name='contatos_gerais'
+        related_name='contatos'
     )
 
     # Dados principais
