@@ -104,7 +104,7 @@ class FAQ(models.Model):
     escola = models.ForeignKey(Escola, on_delete=models.CASCADE, related_name='faqs')
 
     pergunta = models.CharField(max_length=500)
-    resposta = models.TextField()
+    resposta = models.TextField(blank=True)
     categoria = models.CharField(max_length=100)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='ativa')
 
