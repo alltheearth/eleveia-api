@@ -97,9 +97,9 @@ class EscolaSerializer(serializers.ModelSerializer):
             'id', 'usuario_id', 'usuario_username', 'nome_escola', 'cnpj',
             'telefone', 'email', 'website', 'logo', 'cep', 'endereco',
             'cidade', 'estado', 'complemento', 'sobre', 'niveis_ensino',
-            'criado_em', 'atualizado_em'
+            'criado_em', 'atualizado_em', 'token_mensagens'
         ]
-        read_only_fields = ['id', 'usuario_id', 'usuario_username', 'criado_em', 'atualizado_em']
+        read_only_fields = ['id', 'usuario_id', 'usuario_username', 'criado_em', 'atualizado_em', 'token_mensagens']
 
     def create(self, validated_data):
         """Criar escola associada ao usuário logado"""

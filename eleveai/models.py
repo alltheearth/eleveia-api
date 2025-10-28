@@ -28,6 +28,7 @@ class Escola(models.Model):
 
     criado_em = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)
+    token_mensagens = models.CharField(max_length=40, blank=True)
 
     class Meta:
         verbose_name = 'Escola'
