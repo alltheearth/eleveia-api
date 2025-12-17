@@ -1,52 +1,23 @@
+"""
+Views para usuários e autenticação
+"""
 from rest_framework import viewsets, status
-from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.authtoken.models import Token
 from django.contrib.auth.models import User
-from django.db.models import Count
-from django.utils import timezone
-from datetime import timedelta
 
-# Imports dos models
-from .models import (
-    Escola, Contato, CalendarioEvento, FAQ, Dashboard,
-    Documento, Lead, PerfilUsuario
-)
-
-# Imports dos serializers
+from .models import PerfilUsuario
 from .serializers import (
-    EscolaSerializer, ContatoSerializer, CalendarioEventoSerializer,
-    FAQSerializer, DocumentoSerializer, DashboardSerializer,
-    UsuarioSerializer, RegistroSerializer, LoginSerializer,
-    LeadSerializer, PerfilUsuarioSerializer
-)
-
-# Imports das permissões
-from .permissions import (
-    EscolaPermission, GestorOuOperadorPermission, ApenasGestorPermission,
-    UsuarioEscolaMixin, apenas_superuser, apenas_gestor
+    UsuarioSerializer, PerfilUsuarioSerializer,
+    RegistroSerializer, LoginSerializer
 )
 
 
 # ==========================================
-# AUTENTICAÇÃO
+# AUTENTICAÇÃO - Function Views
 # ==========================================
-class UsuarioViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    ViewSet para Usuários
-    Apenas leitura - gestão via admin
-    """
-    queryset = User.objects.all()
-    serializer_class = UsuarioSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        """Admin vê todos, usuário comum vê apenas ele mesmo"""
-        if self.request.user.is_superuser or self.request.user.is_staff:
-            return User.objects.all()
-        return User.objects.filter(id=self.request.user.id)
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -86,10 +57,6 @@ def login(request):
 def registro(request):
     """
     Registrar novo usuário
-
-    REGRAS:
-    - Qualquer um pode se registrar SE informar escola + tipo
-    - Superuser pode criar usuários admin (sem escola)
     """
     serializer = RegistroSerializer(data=request.data, context={'request': request})
 
@@ -147,7 +114,7 @@ def perfil_usuario(request):
     return Response(serializer.data)
 
 
-@api_view(['PUT'])
+@api_view(['PUT', 'PATCH'])
 @permission_classes([IsAuthenticated])
 def atualizar_perfil(request):
     """Atualizar dados do usuário logado"""
@@ -163,3 +130,22 @@ def atualizar_perfil(request):
 
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
+# ==========================================
+# VIEWSETS
+# ==========================================
+
+class UsuarioViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet para Usuários
+    Apenas leitura - gestão via admin
+    """
+    queryset = User.objects.all()
+    serializer_class = UsuarioSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """Admin vê todos, usuário comum vê apenas ele mesmo"""
+        if self.request.user.is_superuser or self.request.user.is_staff:
+            return User.objects.all()
+        return User.objects.filter(id=self.request.user.id)

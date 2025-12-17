@@ -1,24 +1,11 @@
-from rest_framework import viewsets, status
-from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
+# ===== apps/faqs/views.py =====
+from rest_framework import viewsets
 from rest_framework.filters import SearchFilter, OrderingFilter
-from rest_framework.authtoken.models import Token
-from django.contrib.auth.models import User
-from django.db.models import Count
-from django.utils import timezone
-from datetime import timedelta
 
-# Imports dos models
-from .models import (
-FAQ
-
-)
-
-# Imports dos serializers
-from .serializers import (
-    FAQSerializer
-)
+from .models import FAQ
+from .serializers import FAQSerializer
+from core.permissions import GestorOuOperadorPermission
+from core.mixins import UsuarioEscolaMixin
 
 
 class FAQViewSet(UsuarioEscolaMixin, viewsets.ModelViewSet):
@@ -32,3 +19,5 @@ class FAQViewSet(UsuarioEscolaMixin, viewsets.ModelViewSet):
     filter_backends = [SearchFilter, OrderingFilter]
     search_fields = ['pergunta', 'categoria']
     ordering_fields = ['categoria', 'criado_em']
+
+

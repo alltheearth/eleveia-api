@@ -1,11 +1,9 @@
+# ===== apps/dashboard/views.py =====
 from rest_framework import viewsets
 
 from .models import Dashboard
-
-# Imports dos serializers
-from .serializers import (
-DashboardSerializer,
-)
+from .serializers import DashboardSerializer
+from core.permissions import GestorOuOperadorPermission
 
 
 class DashboardViewSet(viewsets.ModelViewSet):
@@ -25,3 +23,5 @@ class DashboardViewSet(viewsets.ModelViewSet):
             return Dashboard.objects.filter(escola=self.request.user.perfil.escola)
 
         return Dashboard.objects.none()
+
+

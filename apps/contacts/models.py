@@ -1,6 +1,6 @@
+# ===== apps/contacts/models.py =====
 from django.db import models
 from django.contrib.auth.models import User
-from ..schools.models import Escola
 
 
 class Contato(models.Model):
@@ -27,7 +27,7 @@ class Contato(models.Model):
         blank=True
     )
     escola = models.ForeignKey(
-        Escola,
+        'schools.Escola',
         on_delete=models.CASCADE,
         related_name='contatos'
     )
@@ -35,19 +35,9 @@ class Contato(models.Model):
     nome = models.CharField(max_length=255, blank=True)
     email = models.EmailField(blank=True)
     telefone = models.CharField(max_length=20)
-
     data_nascimento = models.DateField(null=True, blank=True)
-    status = models.CharField(
-        max_length=20,
-        choices=STATUS_CHOICES,
-        default='ativo'
-    )
-    origem = models.CharField(
-        max_length=20,
-        choices=ORIGEM_CHOICES,
-        default='whatsapp'
-    )
-
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ativo')
+    origem = models.CharField(max_length=20, choices=ORIGEM_CHOICES, default='whatsapp')
     ultima_interacao = models.DateTimeField(null=True, blank=True)
     observacoes = models.TextField(blank=True)
     tags = models.CharField(max_length=500, blank=True)
@@ -69,13 +59,79 @@ class Contato(models.Model):
         return f"{self.nome} - {self.get_status_display()}"
 
 
-# ==========================================
-# SIGNALS
-# ==========================================
+# ===== apps/contacts/views.py =====
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.filters import SearchFilter, OrderingFilter
+from django.db.models import Count
+from django.utils import timezone
+from datetime import timedelta
 
-@receiver(post_save, sender=User)
-def criar_token_usuario(sender, instance=None, created=False, **kwargs):
-    """Cria token automaticamente quando um usuário é criado"""
-    if created:
-        Token.objects.create(user=instance)
-        print(f"✅ Token criado para usuário: {instance.username}")
+from .models import Contato
+from .serializers import ContatoSerializer
+from core.permissions import GestorOuOperadorPermission
+from core.mixins import UsuarioEscolaMixin
+
+
+class ContatoViewSet(UsuarioEscolaMixin, viewsets.ModelViewSet):
+    """
+    ViewSet para Contatos
+    Gestor e Operador podem CRUD completo
+    """
+    queryset = Contato.objects.all()
+    serializer_class = ContatoSerializer
+    permission_classes = [GestorOuOperadorPermission]
+    filter_backends = [SearchFilter, OrderingFilter]
+    search_fields = ['nome', 'email', 'telefone', 'tags']
+    ordering_fields = ['nome', 'criado_em', 'status', 'ultima_interacao']
+
+    def get_queryset(self):
+        """Aplica filtros adicionais"""
+        queryset = super().get_queryset()
+
+        status_filter = self.request.query_params.get('status')
+        origem = self.request.query_params.get('origem')
+
+        if status_filter and status_filter != 'todos':
+            queryset = queryset.filter(status=status_filter)
+        if origem:
+            queryset = queryset.filter(origem=origem)
+
+        return queryset
+
+    @action(detail=False, methods=['get'])
+    def estatisticas(self, request):
+        """Estatísticas dos contatos"""
+        queryset = self.get_queryset()
+
+        stats = {
+            'total': queryset.count(),
+            'ativos': queryset.filter(status='ativo').count(),
+            'inativos': queryset.filter(status='inativo').count(),
+        }
+
+        stats['por_origem'] = dict(
+            queryset.values('origem')
+            .annotate(total=Count('id'))
+            .values_list('origem', 'total')
+        )
+
+        hoje = timezone.now().date()
+        stats['novos_hoje'] = queryset.filter(criado_em__date=hoje).count()
+
+        sete_dias_atras = timezone.now() - timedelta(days=7)
+        stats['interacoes_recentes'] = queryset.filter(
+            ultima_interacao__gte=sete_dias_atras
+        ).count()
+
+        return Response(stats)
+
+    @action(detail=True, methods=['post'])
+    def registrar_interacao(self, request, pk=None):
+        """Registrar última interação"""
+        contato = self.get_object()
+        contato.ultima_interacao = timezone.now()
+        contato.save()
+        serializer = self.get_serializer(contato)
+        return Response(serializer.data)
