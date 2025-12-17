@@ -2,7 +2,29 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
-from .models import Escola, Contato, CalendarioEvento, FAQ, Dashboard, Documento, Lead
+from .models import (
+    Escola, Contato, CalendarioEvento, FAQ, Dashboard,
+    Documento, Lead, PerfilUsuario
+)
+
+
+# ==========================================
+# SERIALIZERS DE PERFIL
+# ==========================================
+
+class PerfilUsuarioSerializer(serializers.ModelSerializer):
+    """Serializer para Perfil de Usuário"""
+    escola_nome = serializers.CharField(source='escola.nome_escola', read_only=True)
+    tipo_display = serializers.CharField(source='get_tipo_display', read_only=True)
+
+    class Meta:
+        model = PerfilUsuario
+        fields = [
+            'id', 'usuario', 'escola', 'escola_nome',
+            'tipo', 'tipo_display', 'ativo',
+            'criado_em', 'atualizado_em'
+        ]
+        read_only_fields = ['id', 'usuario', 'criado_em', 'atualizado_em']
 
 
 # ==========================================
@@ -11,21 +33,44 @@ from .models import Escola, Contato, CalendarioEvento, FAQ, Dashboard, Documento
 
 class UsuarioSerializer(serializers.ModelSerializer):
     """Serializer para visualizar dados do usuário"""
+    perfil = PerfilUsuarioSerializer(read_only=True)
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'first_name', 'last_name']
-        read_only_fields = ['id']
+        fields = [
+            'id', 'username', 'email', 'first_name', 'last_name',
+            'is_superuser', 'is_staff', 'perfil'
+        ]
+        read_only_fields = ['id', 'is_superuser', 'is_staff']
 
 
 class RegistroSerializer(serializers.Serializer):
-    """Serializer para registro de novo usuário"""
+    """
+    Serializer para registro de novo usuário
+
+    REGRAS:
+    - Superuser pode criar sem escola (vira admin)
+    - Usuário comum DEVE informar escola + tipo (gestor/operador)
+    """
     username = serializers.CharField(required=True, max_length=150)
     email = serializers.EmailField(required=True)
     password = serializers.CharField(required=True, write_only=True, min_length=8)
     password2 = serializers.CharField(required=True, write_only=True, min_length=8)
     first_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
     last_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
+
+    # Campos para vincular à escola
+    escola_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        help_text='ID da escola (obrigatório para não-superusers)'
+    )
+    tipo_perfil = serializers.ChoiceField(
+        choices=['gestor', 'operador'],
+        required=False,
+        allow_null=True,
+        help_text='Tipo de perfil: gestor ou operador'
+    )
 
     def validate_username(self, value):
         """Validar se username já existe"""
@@ -40,16 +85,50 @@ class RegistroSerializer(serializers.Serializer):
         return value
 
     def validate(self, data):
-        """Validar se as senhas conferem"""
+        """Validações gerais"""
+        # Senhas devem coincidir
         if data['password'] != data['password2']:
             raise serializers.ValidationError({"password": "As senhas não coincidem."})
+
+        # Verificar se é criação por superuser
+        request = self.context.get('request')
+        is_superuser_creating = (
+                request and
+                request.user and
+                request.user.is_authenticated and
+                (request.user.is_superuser or request.user.is_staff)
+        )
+
+        # Se NÃO for superuser criando, escola e tipo são obrigatórios
+        if not is_superuser_creating:
+            if not data.get('escola_id'):
+                raise serializers.ValidationError({
+                    "escola_id": "Escola é obrigatória para criação de usuários."
+                })
+
+            if not data.get('tipo_perfil'):
+                raise serializers.ValidationError({
+                    "tipo_perfil": "Tipo de perfil é obrigatório (gestor ou operador)."
+                })
+
+            # Validar se escola existe
+            try:
+                Escola.objects.get(id=data['escola_id'])
+            except Escola.DoesNotExist:
+                raise serializers.ValidationError({
+                    "escola_id": "Escola não encontrada."
+                })
+
         return data
 
     def create(self, validated_data):
-        """Criar novo usuário"""
+        """Criar novo usuário com perfil"""
         validated_data.pop('password2')
         password = validated_data.pop('password')
+        escola_id = validated_data.pop('escola_id', None)
+        tipo_perfil = validated_data.pop('tipo_perfil', None)
 
+        # Criar usuário
         user = User.objects.create_user(
             username=validated_data['username'],
             email=validated_data['email'],
@@ -57,6 +136,15 @@ class RegistroSerializer(serializers.Serializer):
             first_name=validated_data.get('first_name', ''),
             last_name=validated_data.get('last_name', '')
         )
+
+        # Se tiver escola, criar perfil
+        if escola_id and tipo_perfil:
+            PerfilUsuario.objects.create(
+                usuario=user,
+                escola_id=escola_id,
+                tipo=tipo_perfil
+            )
+
         return user
 
 
@@ -87,128 +175,108 @@ class LoginSerializer(serializers.Serializer):
 # ==========================================
 
 class EscolaSerializer(serializers.ModelSerializer):
-    """Serializer para Escola"""
-    usuario_id = serializers.IntegerField(source='usuario.id', read_only=True)
-    usuario_username = serializers.CharField(source='usuario.username', read_only=True)
+    """
+    Serializer para Escola
+
+    CAMPOS PROTEGIDOS (só superuser pode alterar):
+    - nome_escola
+    - cnpj
+    - token_mensagens
+    """
 
     class Meta:
         model = Escola
         fields = [
-            'id', 'usuario_id', 'usuario_username', 'nome_escola', 'cnpj',
-            'telefone', 'email', 'website', 'logo', 'cep', 'endereco',
-            'cidade', 'estado', 'complemento', 'sobre', 'niveis_ensino',
-            'criado_em', 'atualizado_em', 'token_mensagens'
+            'id', 'nome_escola', 'cnpj', 'telefone', 'email', 'website', 'logo',
+            'cep', 'endereco', 'cidade', 'estado', 'complemento',
+            'sobre', 'niveis_ensino', 'token_mensagens',
+            'criado_em', 'atualizado_em'
         ]
-        read_only_fields = ['id', 'usuario_id', 'usuario_username', 'criado_em', 'atualizado_em', 'token_mensagens']
+        read_only_fields = ['id', 'criado_em', 'atualizado_em']
 
-    def create(self, validated_data):
-        """Criar escola associada ao usuário logado"""
-        validated_data['usuario'] = self.context['request'].user
-        return super().create(validated_data)
+    def validate(self, data):
+        """Validar campos protegidos"""
+        request = self.context.get('request')
 
-    def update(self, instance, validated_data):
-        """Atualizar escola (apenas o dono pode)"""
-        if instance.usuario != self.context['request'].user:
-            raise serializers.ValidationError("Você não tem permissão para atualizar esta escola.")
-        return super().update(instance, validated_data)
+        # Se for update e NÃO for superuser, bloquear campos protegidos
+        if self.instance and request:
+            is_superuser = (
+                    request.user.is_superuser or
+                    request.user.is_staff
+            )
 
+            if not is_superuser:
+                campos_protegidos = ['nome_escola', 'cnpj', 'token_mensagens']
 
-"""class ContatoSerializer(serializers.ModelSerializer):
-    """"Serializer para Contato""""
-    usuario_id = serializers.IntegerField(source='usuario.id', read_only=True)
-    escola_nome = serializers.CharField(source='escola.nome_escola', read_only=True)
+                for campo in campos_protegidos:
+                    if campo in data:
+                        # Verificar se tentou alterar
+                        valor_atual = getattr(self.instance, campo)
+                        valor_novo = data[campo]
 
-    class Meta:
-        model = Contato
-        fields = [
-            'id', 'usuario_id', 'escola', 'escola_nome', 'email_principal',
-            'telefone_principal', 'whatsapp', 'instagram', 'facebook',
-            'horario_aula', 'diretor', 'email_diretor', 'coordenador',
-            'email_coordenador', 'atualizado_em'
-        ]
-        read_only_fields = ['id', 'usuario_id', 'escola_nome', 'atualizado_em']
+                        if valor_atual != valor_novo:
+                            raise serializers.ValidationError({
+                                campo: f"Apenas superusuários podem alterar {campo}"
+                            })
 
-    def create(self, validated_data):
-        """"Criar contato associado ao usuário logado""""
-        validated_data['usuario'] = self.context['request'].user
-        return super().create(validated_data) """
+        return data
 
 
 class CalendarioEventoSerializer(serializers.ModelSerializer):
     """Serializer para CalendarioEvento"""
-    usuario_id = serializers.IntegerField(source='usuario.id', read_only=True)
     escola_nome = serializers.CharField(source='escola.nome_escola', read_only=True)
 
     class Meta:
         model = CalendarioEvento
         fields = [
-            'id', 'usuario_id', 'escola', 'escola_nome', 'data', 'evento',
+            'id', 'escola', 'escola_nome', 'data', 'evento',
             'tipo', 'criado_em', 'atualizado_em'
         ]
-        read_only_fields = ['id', 'usuario_id', 'escola_nome', 'criado_em', 'atualizado_em']
-
-    def create(self, validated_data):
-        """Criar evento associado ao usuário logado"""
-        validated_data['usuario'] = self.context['request'].user
-        return super().create(validated_data)
+        read_only_fields = ['id', 'escola_nome', 'criado_em', 'atualizado_em']
 
 
 class FAQSerializer(serializers.ModelSerializer):
     """Serializer para FAQ"""
-    usuario_id = serializers.IntegerField(source='usuario.id', read_only=True)
     escola_nome = serializers.CharField(source='escola.nome_escola', read_only=True)
 
     class Meta:
         model = FAQ
         fields = [
-            'id', 'usuario_id', 'escola', 'escola_nome', 'pergunta', 'resposta',
+            'id', 'escola', 'escola_nome', 'pergunta', 'resposta',
             'categoria', 'status', 'criado_em', 'atualizado_em'
         ]
-        read_only_fields = ['id', 'usuario_id', 'escola_nome', 'criado_em', 'atualizado_em']
-
-    def create(self, validated_data):
-        """Criar FAQ associada ao usuário logado"""
-        validated_data['usuario'] = self.context['request'].user
-        return super().create(validated_data)
+        read_only_fields = ['id', 'escola_nome', 'criado_em', 'atualizado_em']
 
 
 class DocumentoSerializer(serializers.ModelSerializer):
     """Serializer para Documento"""
-    usuario_id = serializers.IntegerField(source='usuario.id', read_only=True)
     escola_nome = serializers.CharField(source='escola.nome_escola', read_only=True)
 
     class Meta:
         model = Documento
         fields = [
-            'id', 'usuario_id', 'escola', 'escola_nome', 'nome', 'arquivo',
+            'id', 'escola', 'escola_nome', 'nome', 'arquivo',
             'status', 'criado_em', 'atualizado_em'
         ]
-        read_only_fields = ['id', 'usuario_id', 'escola_nome', 'criado_em', 'atualizado_em']
-
-    def create(self, validated_data):
-        """Criar documento associado ao usuário logado"""
-        validated_data['usuario'] = self.context['request'].user
-        return super().create(validated_data)
+        read_only_fields = ['id', 'escola_nome', 'criado_em', 'atualizado_em']
 
 
 class DashboardSerializer(serializers.ModelSerializer):
     """Serializer para Dashboard"""
-    usuario_id = serializers.IntegerField(source='usuario.id', read_only=True)
     escola_nome = serializers.CharField(source='escola.nome_escola', read_only=True)
 
     class Meta:
         model = Dashboard
         fields = [
-            'id', 'usuario_id', 'escola', 'escola_nome', 'status_agente',
+            'id', 'escola', 'escola_nome', 'status_agente',
             'interacoes_hoje', 'documentos_upload', 'faqs_criadas',
             'leads_capturados', 'taxa_resolucao', 'novos_hoje', 'atualizado_em'
         ]
-        read_only_fields = ['id', 'usuario_id', 'escola_nome', 'atualizado_em']
+        read_only_fields = ['id', 'escola_nome', 'atualizado_em']
 
 
 class LeadSerializer(serializers.ModelSerializer):
     """Serializer para Lead"""
-    usuario_id = serializers.IntegerField(source='usuario.id', read_only=True)
     escola_nome = serializers.CharField(source='escola.nome_escola', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     origem_display = serializers.CharField(source='get_origem_display', read_only=True)
@@ -216,7 +284,7 @@ class LeadSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lead
         fields = [
-            'id', 'usuario_id', 'escola', 'escola_nome',
+            'id', 'escola', 'escola_nome',
             'nome', 'email', 'telefone',
             'status', 'status_display',
             'origem', 'origem_display',
@@ -225,37 +293,14 @@ class LeadSerializer(serializers.ModelSerializer):
             'criado_em', 'atualizado_em'
         ]
         read_only_fields = [
-            'id', 'usuario_id', 'escola_nome',
+            'id', 'escola_nome',
             'status_display', 'origem_display',
             'criado_em', 'atualizado_em'
         ]
 
-    def create(self, validated_data):
-        """Criar lead associado ao usuário logado"""
-        validated_data['usuario'] = self.context['request'].user
-        return super().create(validated_data)
-
-    def update(self, instance, validated_data):
-        """Atualizar lead (apenas o dono pode)"""
-        if instance.usuario != self.context['request'].user:
-            raise serializers.ValidationError("Você não tem permissão para atualizar este lead.")
-
-        # Se status mudou para 'contato', atualizar contatado_em
-        if 'status' in validated_data:
-            if validated_data['status'] == 'contato' and instance.status == 'novo':
-                from django.utils import timezone
-                validated_data['contatado_em'] = timezone.now()
-
-            # Se status mudou para 'conversao', atualizar convertido_em
-            if validated_data['status'] == 'conversao' and instance.status != 'conversao':
-                from django.utils import timezone
-                validated_data['convertido_em'] = timezone.now()
-
-        return super().update(instance, validated_data)
 
 class ContatoSerializer(serializers.ModelSerializer):
     """Serializer para Contatos"""
-    usuario_id = serializers.IntegerField(source='usuario.id', read_only=True)
     escola_nome = serializers.CharField(source='escola.nome_escola', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     origem_display = serializers.CharField(source='get_origem_display', read_only=True)
@@ -263,7 +308,7 @@ class ContatoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Contato
         fields = [
-            'id', 'usuario_id', 'escola', 'escola_nome',
+            'id', 'escola', 'escola_nome',
             'nome', 'email', 'telefone',
             'data_nascimento',
             'status', 'status_display',
@@ -272,51 +317,7 @@ class ContatoSerializer(serializers.ModelSerializer):
             'criado_em', 'atualizado_em'
         ]
         read_only_fields = [
-            'id', 'usuario_id', 'escola_nome',
+            'id', 'escola_nome',
             'status_display', 'origem_display',
             'criado_em', 'atualizado_em'
         ]
-
-    def create(self, validated_data):
-        """Criar contato associado ao usuário logado"""
-        validated_data['usuario'] = self.context['request'].user
-        return super().create(validated_data)
-
-    def update(self, instance, validated_data):
-        """Atualizar contato (apenas o dono pode)"""
-        if instance.usuario != self.context['request'].user:
-            if not (self.context['request'].user.is_superuser or self.context['request'].user.is_staff):
-                raise serializers.ValidationError("Você não tem permissão para atualizar este contato.")
-
-        return super().update(instance, validated_data)
-
-    """def validate_email(self, value):
-        """"Validar email""""
-        if not value:
-            raise serializers.ValidationError("Email é obrigatório")
-
-        # Verificar se email já existe para esta escola
-        request = self.context.get('request')
-        escola_id = self.initial_data.get('escola')
-
-        # Se estiver atualizando, excluir o próprio registro da verificação
-        queryset = Contato.objects.filter(email=value, escola_id=escola_id)
-        if self.instance:
-            queryset = queryset.exclude(pk=self.instance.pk)
-
-        if queryset.exists():
-            raise serializers.ValidationError("Já existe um contato com este email nesta escola.")
-
-        return value
-"""
-    def validate_telefone(self, value):
-        """Validar telefone"""
-        if not value:
-            raise serializers.ValidationError("Telefone é obrigatório")
-        return value
-
-    """def validate_nome(self, value):
-        """"Validar nome""""
-        if not value or len(value.strip()) < 3:
-            raise serializers.ValidationError("Nome deve ter no mínimo 3 caracteres")
-        return value.strip()"""
