@@ -1,29 +1,19 @@
-from rest_framework import viewsets, status
-from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework import viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.filters import SearchFilter, OrderingFilter
-from rest_framework.authtoken.models import Token
-from django.contrib.auth.models import User
 from django.db.models import Count
 from django.utils import timezone
 from datetime import timedelta
 
-# Imports dos models
-from .models import (
-Contato
-)
+from .models import Contato
+from .serializers import ContatoSerializer
+from core.permissions import GestorOuOperadorPermission
+from core.mixins import UsuarioEscolaMixin
 
-# Imports dos serializers
-from .serializers import (
-     ContatoSerializer
-)
 
 class ContatoViewSet(UsuarioEscolaMixin, viewsets.ModelViewSet):
-    """
-    ViewSet para Contatos
-    Gestor e Operador podem CRUD completo
-    """
+    """ViewSet para Contatos"""
     queryset = Contato.objects.all()
     serializer_class = ContatoSerializer
     permission_classes = [GestorOuOperadorPermission]

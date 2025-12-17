@@ -1,31 +1,17 @@
-from rest_framework import viewsets, status
-from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework import viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.filters import SearchFilter, OrderingFilter
-from rest_framework.authtoken.models import Token
-from django.contrib.auth.models import User
-from django.db.models import Count
 from django.utils import timezone
-from datetime import timedelta
 
-# Imports dos models
-from .models import (
-    CalendarioEvento
-)
-
-# Imports dos serializers
-from .serializers import (
-    CalendarioEventoSerializer,
-)
-
+from .models import CalendarioEvento
+from .serializers import CalendarioEventoSerializer
+from core.permissions import GestorOuOperadorPermission
+from core.mixins import UsuarioEscolaMixin
 
 
 class CalendarioEventoViewSet(UsuarioEscolaMixin, viewsets.ModelViewSet):
-    """
-    ViewSet para Eventos
-    Gestor e Operador podem CRUD completo
-    """
+    """ViewSet para Eventos"""
     queryset = CalendarioEvento.objects.all()
     serializer_class = CalendarioEventoSerializer
     permission_classes = [GestorOuOperadorPermission]
