@@ -1,0 +1,23 @@
+"""
+[pytest]
+DJANGO_SETTINGS_MODULE = config.settings.testing
+python_files = tests.py test_*.py *_tests.py
+python_classes = Test*
+python_functions = test_*
+addopts =
+    --verbose
+    --strict-markers
+    --cov=apps
+    --cov=core
+    --cov-report=html
+    --cov-report=term-missing
+    --cov-fail-under=80
+    --numprocesses=auto
+    --maxfail=1
+markers =
+    slow: marks tests as slow (deselect with '-m "not slow"')
+    integration: marks tests as integration tests
+    unit: marks tests as unit tests
+    api: marks tests as API tests
+testpaths = apps core
+"""
