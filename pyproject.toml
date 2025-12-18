@@ -1,26 +1,145 @@
-[project]
+[tool.poetry]
 name = "eleveia-api"
 version = "0.1.0"
-description = ""
-authors = [
-    {name = "Lucas Pires",email = "lcpires7.dev@gmail.com"}
-]
+description = "Sistema de gestão escolar com IA"
+authors = ["Lucas Pires <lcpires7.dev@gmail.com>"]
 readme = "README.md"
-requires-python = ">=3.11"
-dependencies = [
-    "django (>=5.2.7,<6.0.0)",
-    "djangorestframework (>=3.16.1,<4.0.0)",
-    "django-cors-headers (>=4.9.0,<5.0.0)",
-    "pillow (>=12.0.0,<13.0.0)",
-    "python-decouple (>=3.8,<4.0)",
-    "python-dotenv (>=1.1.1,<2.0.0)",
-    "psycopg2 (>=2.9.11,<3.0.0)",
-    "gunicorn (>=23.0.0,<24.0.0)",
-    "rest-framework-simplejwt (>=0.0.2,<0.0.3)",
-    "pytest (>=9.0.2,<10.0.0)"
-]
+packages = [{include = "apps"}, {include = "core"}, {include = "config"}]
 
+[tool.poetry.dependencies]
+python = "^3.11"
+django = "^5.2.7"
+djangorestframework = "^3.16.1"
+django-cors-headers = "^4.9.0"
+pillow = "^12.0.0"
+python-decouple = "^3.8"
+psycopg2-binary = "^2.9.11"
+gunicorn = "^23.0.0"
+
+[tool.poetry.group.dev.dependencies]
+# Testing
+pytest = "^7.4.3"
+pytest-django = "^4.7.0"
+pytest-cov = "^4.1.0"
+pytest-xdist = "^3.5.0"
+pytest-mock = "^3.12.0"
+factory-boy = "^3.3.0"
+faker = "^20.1.0"
+freezegun = "^1.4.0"
+
+# Code Quality
+black = "^23.12.1"
+isort = "^5.13.2"
+flake8 = "^6.1.0"
+
+# Development Tools
+ipython = "^8.18.1"
+
+[tool.poetry.scripts]
+test = "pytest"
+test-cov = "pytest --cov --cov-report=html"
+test-fast = "pytest -m 'not slow' -n auto"
+format = "sh -c 'black . && isort .'"
+lint = "sh -c 'black --check . && isort --check-only . && flake8'"
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
+requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+# ==========================================
+# PYTEST Configuration
+# ==========================================
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.testing"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+testpaths = ["apps", "core"]
+addopts = [
+    "--verbose",
+    "--strict-markers",
+    "--tb=short",
+    "--reuse-db",
+    "-p", "no:warnings",
+    "--ds=config.settings.testing",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+    "api: marks tests as API tests",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+# ==========================================
+# COVERAGE Configuration
+# ==========================================
+[tool.coverage.run]
+source = ["apps", "core"]
+omit = [
+    "*/migrations/*",
+    "*/tests/*",
+    "**/test_*.py",
+    "*/admin.py",
+    "*/__init__.py",
+    "*/apps.py",
+    "*/wsgi.py",
+    "*/asgi.py",
+    "*/settings/*",
+    "*/manage.py",
+    "*/conftest.py",
+]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "def __str__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
+precision = 2
+show_missing = true
+skip_covered = false
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+# ==========================================
+# BLACK Configuration
+# ==========================================
+[tool.black]
+line-length = 100
+target-version = ['py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+    \.git
+  | \.venv
+  | migrations
+  | staticfiles
+)/
+'''
+
+# ==========================================
+# ISORT Configuration
+# ==========================================
+[tool.isort]
+profile = "black"
+line_length = 100
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+skip_glob = ["*/migrations/*", "*/static/*", "*/staticfiles/*"]
+known_django = ["django"]
+known_drf = ["rest_framework"]
+sections = ["FUTURE", "STDLIB", "DJANGO", "DRF", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
