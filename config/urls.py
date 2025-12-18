@@ -36,6 +36,8 @@ urlpatterns = [
 
         # Dashboard
         path('dashboard/', include('apps.dashboard.urls')),
+
+        path('tickets/', include('apps.tickets.urls'))
     ])),
 
     # DRF Auth (para browsable API)
