@@ -1,48 +1,46 @@
 """
-Configuração de URLs principais
+✅ CORRETO - config/urls.py
 """
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from rest_framework.routers import DefaultRouter
-
-# Router principal
-router = DefaultRouter()
 
 urlpatterns = [
     # Django Admin
     path('admin/', admin.site.urls),
 
-    # API v1
+    # ✅ API v1 - TODAS as rotas devem estar dentro de api/v1/
     path('api/v1/', include([
         # Autenticação
-        path('auth/', include('apps.users.urls')),
+        path('auth/', include('apps.users.urls')),  # ✅ /api/v1/auth/login/
 
         # Escolas
-        path('schools/', include('apps.schools.urls')),
+        path('schools/', include('apps.schools.urls')),  # ✅ /api/v1/schools/
 
-        # CRM
-        path('contacts/', include('apps.contacts.urls')),
+        # Contatos
+        path('contacts/', include('apps.contacts.urls')),  # ✅ /api/v1/contacts/
 
         # Eventos
-        path('events/', include('apps.events.urls')),
+        path('events/', include('apps.events.urls')),  # ✅ /api/v1/events/
 
         # FAQs
-        path('faqs/', include('apps.faqs.urls')),
+        path('faqs/', include('apps.faqs.urls')),  # ✅ /api/v1/faqs/
 
         # Documentos
-        path('documents/', include('apps.documents.urls')),
+        path('documents/', include('apps.documents.urls')),  # ✅ /api/v1/documents/
 
         # Dashboard
-        path('dashboard/', include('apps.dashboard.urls')),
+        path('dashboard/', include('apps.dashboard.urls')),  # ✅ /api/v1/dashboard/
 
-        path('tickets/', include('apps.tickets.urls')),
+        # Tickets
+        path('tickets/', include('apps.tickets.urls')),  # ✅ /api/v1/tickets/
 
-        path('leads/', include('apps.leads.urls'))
+        # Leads
+        path('leads/', include('apps.leads.urls')),  # ✅ /api/v1/leads/
     ])),
 
-    # DRF Auth (para browsable API)
+    # DRF Auth (para browsable API em desenvolvimento)
     path('api-auth/', include('rest_framework.urls')),
 ]
 
