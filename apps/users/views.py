@@ -141,7 +141,7 @@ def perfil_usuario(request):
     print(f"📤 [PERFIL] Enviando dados: {serializer.data}")
     print("=" * 50)
 
-    return Response(serializer.data.email)
+    return Response(serializer.data)
 
 
 @api_view(['PUT', 'PATCH'])
