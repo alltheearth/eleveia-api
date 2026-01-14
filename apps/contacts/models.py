@@ -135,3 +135,28 @@ class ContatoViewSet(UsuarioEscolaMixin, viewsets.ModelViewSet):
         contato.save()
         serializer = self.get_serializer(contato)
         return Response(serializer.data)
+
+
+# apps/contacts/models.py
+class Contato(models.Model):
+    # ...
+
+    class Meta:
+        ordering = ['-criado_em']
+        verbose_name = 'Contato Geral'
+        verbose_name_plural = 'Contatos Gerais'
+        indexes = [
+            models.Index(fields=['escola', 'status']),
+            models.Index(fields=['criado_em']),
+            models.Index(fields=['email']),
+            # ✅ Adicionar índices para buscas frequentes
+            models.Index(fields=['telefone']),  # Para buscar por telefone
+            models.Index(fields=['escola', '-criado_em']),  # Para ordenação otimizada
+        ]
+        # ✅ Constraints para garantir integridade
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(email__isnull=False) | models.Q(telefone__isnull=False),
+                name='contato_must_have_email_or_phone'
+            )
+        ]

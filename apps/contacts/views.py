@@ -1,72 +1,64 @@
+from .services import ContatoService
 from rest_framework import viewsets
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.filters import SearchFilter, OrderingFilter
-from django.db.models import Count
-from django.utils import timezone
-from datetime import timedelta
-
-from .models import Contato
-from .serializers import ContatoSerializer
-from core.permissions import GestorOuOperadorPermission
-from core.mixins import UsuarioEscolaMixin
-
+# apps/contacts/views.py
+from core.pagination import LargePagination
 
 class ContatoViewSet(UsuarioEscolaMixin, viewsets.ModelViewSet):
-    """ViewSet para Contatos"""
-    queryset = Contato.objects.all()
-    serializer_class = ContatoSerializer
-    permission_classes = [GestorOuOperadorPermission]
-    filter_backends = [SearchFilter, OrderingFilter]
-    search_fields = ['nome', 'email', 'telefone', 'tags']
-    ordering_fields = ['nome', 'criado_em', 'status', 'ultima_interacao']
+    queryset = Contato.objects.select_related('escola', 'usuario')
+    pagination_class = LargePagination  # Para este ViewSet específico
+
+    # Agora faz JOIN e traz tudo em 1 query!
 
     def get_queryset(self):
-        """Aplica filtros adicionais"""
+        """Otimizar queries"""
         queryset = super().get_queryset()
 
-        status_filter = self.request.query_params.get('status')
-        origem = self.request.query_params.get('origem')
-
-        if status_filter and status_filter != 'todos':
-            queryset = queryset.filter(status=status_filter)
-        if origem:
-            queryset = queryset.filter(origem=origem)
+        # select_related para ForeignKeys (1-to-1, Many-to-1)
+        queryset = queryset.select_related('escola', 'usuario')
 
         return queryset
 
-    @action(detail=False, methods=['get'])
-    def estatisticas(self, request):
-        """Estatísticas dos contatos"""
-        queryset = self.get_queryset()
 
-        stats = {
-            'total': queryset.count(),
-            'ativos': queryset.filter(status='ativo').count(),
-            'inativos': queryset.filter(status='inativo').count(),
-        }
-
-        stats['por_origem'] = dict(
-            queryset.values('origem')
-            .annotate(total=Count('id'))
-            .values_list('origem', 'total')
-        )
-
-        hoje = timezone.now().date()
-        stats['novos_hoje'] = queryset.filter(criado_em__date=hoje).count()
-
-        sete_dias_atras = timezone.now() - timedelta(days=7)
-        stats['interacoes_recentes'] = queryset.filter(
-            ultima_interacao__gte=sete_dias_atras
-        ).count()
-
-        return Response(stats)
+class ContatoViewSet(UsuarioEscolaMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def registrar_interacao(self, request, pk=None):
         """Registrar última interação"""
         contato = self.get_object()
-        contato.ultima_interacao = timezone.now()
-        contato.save()
+        contato = ContatoService.registrar_interacao(contato)
         serializer = self.get_serializer(contato)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def estatisticas(self, request):
+        """Estatísticas dos contatos"""
+        escola_id = request.user.perfil.escola_id
+        stats = ContatoService.calcular_estatisticas(escola_id)
+        return Response(stats)
+
+    from drf_spectacular.utils import extend_schema, OpenApiParameter
+
+    class ContatoViewSet(UsuarioEscolaMixin, viewsets.ModelViewSet):
+
+        @extend_schema(
+            summary="Registrar interação com contato",
+            description="Registra a data/hora da última interação com o contato",
+            responses={200: ContatoSerializer}
+        )
+        @action(detail=True, methods=['post'])
+        def registrar_interacao(self, request, pk=None):
+            """Registrar última interação"""
+
+
+import logging
+
+logger = logging.getLogger('apps.contacts')
+
+
+class ContatoViewSet(UsuarioEscolaMixin, viewsets.ModelViewSet):
+
+    def create(self, request, *args, **kwargs):
+        logger.info(
+            f"Criando contato - User: {request.user.id}, Escola: {request.user.perfil.escola_id}"
+        )
+        return super().create(request, *args, **kwargs)
