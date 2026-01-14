@@ -1,25 +1,41 @@
+# ===================================================================
+# apps/schools/views.py
+# ===================================================================
 from rest_framework import viewsets
-from rest_framework.decorators import action
-from rest_framework.response import Response
 from rest_framework.filters import SearchFilter, OrderingFilter
 
-from .models import Escola
-from .serializers import EscolaSerializer
-from core.permissions import EscolaPermission
-
-from django.utils.decorators import method_decorator
-from django.views.decorators.cache import cache_page
+from .models import School
+from .serializers import SchoolSerializer
+from core.permissions import IsSchoolOwnerOrReadOnly
 
 
-class EscolaViewSet(viewsets.ModelViewSet):
+class SchoolViewSet(viewsets.ModelViewSet):
+    """
+    School management endpoint.
 
-    @method_decorator(cache_page(60 * 15))  # Cache por 15 minutos
-    def list(self, request, *args, **kwargs):
-        """Lista escolas com cache"""
-        return super().list(request, *args, **kwargs)
+    Permissions:
+    - CREATE: Only superuser
+    - READ: Superuser (all) or users from that school
+    - UPDATE: Superuser (all fields) or Manager (non-protected fields)
+    - DELETE: Only superuser
+    """
+    queryset = School.objects.all()
+    serializer_class = SchoolSerializer
+    permission_classes = [IsSchoolOwnerOrReadOnly]
+    filter_backends = [SearchFilter, OrderingFilter]
+    search_fields = ['school_name', 'city', 'state']
+    ordering_fields = ['school_name', 'created_at']
 
-    def perform_update(self, serializer):
-        """Limpar cache ao atualizar"""
-        from django.core.cache import cache
-        cache.delete_pattern('views.decorators.cache.*escola*')
-        super().perform_update(serializer)
+    def get_queryset(self):
+        """Filter schools based on user permissions"""
+        queryset = super().get_queryset()
+
+        # Superusers see all schools
+        if self.request.user.is_superuser or self.request.user.is_staff:
+            return queryset
+
+        # Regular users see only their school
+        if hasattr(self.request.user, 'profile'):
+            return queryset.filter(id=self.request.user.profile.school_id)
+
+        return queryset.none()

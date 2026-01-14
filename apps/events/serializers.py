@@ -1,17 +1,26 @@
-# eleveai/serializers.py
+# ===================================================================
+# apps/events/serializers.py
+# ===================================================================
 from rest_framework import serializers
-from .models import (
-    CalendarioEvento
-)
+from .models import CalendarEvent
 
-class CalendarioEventoSerializer(serializers.ModelSerializer):
-    """Serializer para CalendarioEvento"""
-    escola_nome = serializers.CharField(source='escola.nome_escola', read_only=True)
+
+class CalendarEventSerializer(serializers.ModelSerializer):
+    """Calendar event serializer"""
+    school_name = serializers.CharField(source='school.school_name', read_only=True)
+    event_type_display = serializers.CharField(source='get_event_type_display', read_only=True)
 
     class Meta:
-        model = CalendarioEvento
+        model = CalendarEvent
         fields = [
-            'id', 'escola', 'escola_nome', 'data', 'evento',
-            'tipo', 'criado_em', 'atualizado_em'
+            'id',
+            'school',
+            'school_name',
+            'date',
+            'title',
+            'event_type',
+            'event_type_display',
+            'created_at',
+            'updated_at',
         ]
-        read_only_fields = ['id', 'escola_nome', 'criado_em', 'atualizado_em']
+        read_only_fields = ['id', 'school_name', 'event_type_display', 'created_at', 'updated_at']

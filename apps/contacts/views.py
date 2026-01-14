@@ -1,64 +1,76 @@
-from .services import ContatoService
-from rest_framework import viewsets
+# ===================================================================
 # apps/contacts/views.py
-from core.pagination import LargePagination
+# ===================================================================
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.filters import SearchFilter, OrderingFilter
+from django.db.models import Count
+from django.utils import timezone
+from datetime import timedelta
 
-class ContatoViewSet(UsuarioEscolaMixin, viewsets.ModelViewSet):
-    queryset = Contato.objects.select_related('escola', 'usuario')
-    pagination_class = LargePagination  # Para este ViewSet específico
+from .models import WhatsAppContact
+from .serializers import WhatsAppContactSerializer
+from core.permissions import IsManagerOrOperator
+from core.mixins import SchoolFilterMixin
 
-    # Agora faz JOIN e traz tudo em 1 query!
+
+class WhatsAppContactViewSet(SchoolFilterMixin, viewsets.ModelViewSet):
+    """WhatsApp contacts management"""
+    queryset = WhatsAppContact.objects.select_related('school', 'created_by')
+    serializer_class = WhatsAppContactSerializer
+    permission_classes = [IsManagerOrOperator]
+    filter_backends = [SearchFilter, OrderingFilter]
+    search_fields = ['full_name', 'email', 'phone', 'tags']
+    ordering_fields = ['full_name', 'created_at', 'status', 'last_interaction_at']
 
     def get_queryset(self):
-        """Otimizar queries"""
+        """Apply additional filters"""
         queryset = super().get_queryset()
 
-        # select_related para ForeignKeys (1-to-1, Many-to-1)
-        queryset = queryset.select_related('escola', 'usuario')
+        status_filter = self.request.query_params.get('status')
+        source = self.request.query_params.get('source')
+
+        if status_filter and status_filter != 'all':
+            queryset = queryset.filter(status=status_filter)
+        if source:
+            queryset = queryset.filter(source=source)
 
         return queryset
 
-
-class ContatoViewSet(UsuarioEscolaMixin, viewsets.ModelViewSet):
-
-    @action(detail=True, methods=['post'])
-    def registrar_interacao(self, request, pk=None):
-        """Registrar última interação"""
-        contato = self.get_object()
-        contato = ContatoService.registrar_interacao(contato)
-        serializer = self.get_serializer(contato)
-        return Response(serializer.data)
-
     @action(detail=False, methods=['get'])
-    def estatisticas(self, request):
-        """Estatísticas dos contatos"""
-        escola_id = request.user.perfil.escola_id
-        stats = ContatoService.calcular_estatisticas(escola_id)
+    def statistics(self, request):
+        """Get contact statistics"""
+        queryset = self.get_queryset()
+
+        stats = {
+            'total': queryset.count(),
+            'active': queryset.filter(status='active').count(),
+            'inactive': queryset.filter(status='inactive').count(),
+        }
+
+        stats['by_source'] = dict(
+            queryset.values('source')
+            .annotate(total=Count('id'))
+            .values_list('source', 'total')
+        )
+
+        today = timezone.now().date()
+        stats['new_today'] = queryset.filter(created_at__date=today).count()
+
+        week_ago = timezone.now() - timedelta(days=7)
+        stats['recent_interactions'] = queryset.filter(
+            last_interaction_at__gte=week_ago
+        ).count()
+
         return Response(stats)
 
-    from drf_spectacular.utils import extend_schema, OpenApiParameter
+    @action(detail=True, methods=['post'])
+    def record_interaction(self, request, pk=None):
+        """Record last interaction timestamp"""
+        contact = self.get_object()
+        contact.last_interaction_at = timezone.now()
+        contact.save(update_fields=['last_interaction_at', 'updated_at'])
 
-    class ContatoViewSet(UsuarioEscolaMixin, viewsets.ModelViewSet):
-
-        @extend_schema(
-            summary="Registrar interação com contato",
-            description="Registra a data/hora da última interação com o contato",
-            responses={200: ContatoSerializer}
-        )
-        @action(detail=True, methods=['post'])
-        def registrar_interacao(self, request, pk=None):
-            """Registrar última interação"""
-
-
-import logging
-
-logger = logging.getLogger('apps.contacts')
-
-
-class ContatoViewSet(UsuarioEscolaMixin, viewsets.ModelViewSet):
-
-    def create(self, request, *args, **kwargs):
-        logger.info(
-            f"Criando contato - User: {request.user.id}, Escola: {request.user.perfil.escola_id}"
-        )
-        return super().create(request, *args, **kwargs)
+        serializer = self.get_serializer(contact)
+        return Response(serializer.data)

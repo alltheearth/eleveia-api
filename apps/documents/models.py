@@ -1,40 +1,68 @@
+# ===================================================================
+# apps/documents/models.py - COMPLETE REFACTORED VERSION
+# ===================================================================
 from django.db import models
 from django.contrib.auth.models import User
-from apps.schools.models import Escola
 
-class Documento(models.Model):
-    """Modelo para armazenar documentos da escola"""
+
+class Document(models.Model):
+    """School documents"""
+
     STATUS_CHOICES = [
-        ('pendente', 'Pendente'),
-        ('processando', 'Processando'),
-        ('processado', 'Processado'),
-        ('erro', 'Erro'),
+        ('pending', 'Pendente'),
+        ('processing', 'Processando'),
+        ('processed', 'Processado'),
+        ('error', 'Erro'),
     ]
 
-    usuario = models.ForeignKey(
+    created_by = models.ForeignKey(
         User,
-        on_delete=models.CASCADE,
-        related_name='documentos',
+        on_delete=models.SET_NULL,
+        related_name='created_documents',
         null=True,
-        blank=True
+        blank=True,
+        verbose_name='Criado por'
     )
-    escola = models.ForeignKey(
-        Escola,
+
+    school = models.ForeignKey(
+        'schools.School',
         on_delete=models.CASCADE,
-        related_name='documentos'
+        related_name='documents',
+        verbose_name='Escola'
     )
 
-    nome = models.CharField(max_length=255)
-    arquivo = models.FileField(upload_to='documentos/')
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pendente')
+    name = models.CharField(
+        max_length=255,
+        verbose_name='Nome'
+    )
 
-    criado_em = models.DateTimeField(auto_now_add=True)
-    atualizado_em = models.DateTimeField(auto_now=True)
+    file = models.FileField(
+        upload_to='documents/',
+        verbose_name='Arquivo'
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        verbose_name='Status'
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name='Criado em'
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name='Atualizado em'
+    )
 
     class Meta:
-        ordering = ['-criado_em']
         verbose_name = 'Documento'
         verbose_name_plural = 'Documentos'
+        db_table = 'documents_document'
+        ordering = ['-created_at']
 
     def __str__(self):
-        return self.nome
+        return self.name

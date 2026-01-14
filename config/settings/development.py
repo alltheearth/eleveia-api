@@ -1,5 +1,6 @@
 """
-Configurações para ambiente de desenvolvimento
+config/settings/development.py
+FIXED VERSION - Resolves LOGGING KeyError
 """
 from .base import *
 
@@ -17,5 +18,9 @@ REST_FRAMEWORK['DEFAULT_RENDERER_CLASSES'] = [
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
 # Logging mais verboso em desenvolvimento
-LOGGING['root']['level'] = 'DEBUG'
-LOGGING['loggers']['apps']['level'] = 'DEBUG'
+# FIX: Ensure 'root' key exists before trying to modify it
+if 'root' in LOGGING:
+    LOGGING['root']['level'] = 'DEBUG'
+
+if 'loggers' in LOGGING and 'apps' in LOGGING['loggers']:
+    LOGGING['loggers']['apps']['level'] = 'DEBUG'

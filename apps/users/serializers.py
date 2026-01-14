@@ -1,138 +1,108 @@
-"""
-Serializers para usuários e autenticação
-"""
+
+# ===================================================================
+# apps/users/serializers.py
+# ===================================================================
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
-from .models import PerfilUsuario
+from .models import UserProfile
 
 
-# ==========================================
-# SERIALIZERS DE PERFIL
-# ==========================================
-
-class PerfilUsuarioSerializer(serializers.ModelSerializer):
-    """Serializer para Perfil de Usuário"""
-    escola_nome = serializers.CharField(source='escola.nome_escola', read_only=True)
-    tipo_display = serializers.CharField(source='get_tipo_display', read_only=True)
-
+class UserProfileSerializer(serializers.ModelSerializer):
+    """User profile serializer"""
+    school_name = serializers.CharField(source='school.school_name', read_only=True)
+    role_display = serializers.CharField(source='get_role_display', read_only=True)
+    
     class Meta:
-        model = PerfilUsuario
+        model = UserProfile
         fields = [
-            'id', 'usuario', 'escola', 'escola_nome',
-            'tipo', 'tipo_display', 'ativo',
-            'criado_em', 'atualizado_em'
+            'id',
+            'user',
+            'school',
+            'school_name',
+            'role',
+            'role_display',
+            'is_active',
+            'created_at',
+            'updated_at',
         ]
-        read_only_fields = ['id', 'usuario', 'criado_em', 'atualizado_em']
+        read_only_fields = ['id', 'user', 'created_at', 'updated_at']
 
 
-# ==========================================
-# SERIALIZERS DE USUÁRIO
-# ==========================================
-
-class UsuarioSerializer(serializers.ModelSerializer):
-    """Serializer para visualizar dados do usuário"""
-    perfil = PerfilUsuarioSerializer(read_only=True)
-
+class UserSerializer(serializers.ModelSerializer):
+    """User serializer with profile"""
+    profile = UserProfileSerializer(read_only=True)
+    
     class Meta:
         model = User
         fields = [
-            'id', 'username', 'email', 'first_name', 'last_name',
-            'is_superuser', 'is_staff', 'perfil'
+            'id',
+            'username',
+            'email',
+            'first_name',
+            'last_name',
+            'is_superuser',
+            'is_staff',
+            'profile',
         ]
         read_only_fields = ['id', 'is_superuser', 'is_staff']
 
 
-# ==========================================
-# SERIALIZERS DE AUTENTICAÇÃO
-# ==========================================
-
-class RegistroSerializer(serializers.Serializer):
-    """
-    Serializer para registro de novo usuário
-
-    REGRAS:
-    - Superuser pode criar sem escola (vira admin)
-    - Usuário comum DEVE informar escola + tipo (gestor/operador)
-    """
+class RegisterSerializer(serializers.Serializer):
+    """User registration serializer"""
     username = serializers.CharField(required=True, max_length=150)
     email = serializers.EmailField(required=True)
     password = serializers.CharField(required=True, write_only=True, min_length=8)
     password2 = serializers.CharField(required=True, write_only=True, min_length=8)
-    first_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
-    last_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
-
-    # Campos para vincular à escola
-    escola_id = serializers.IntegerField(
+    first_name = serializers.CharField(required=False, allow_blank=True)
+    last_name = serializers.CharField(required=False, allow_blank=True)
+    
+    school_id = serializers.IntegerField(required=False, allow_null=True)
+    role = serializers.ChoiceField(
+        choices=['manager', 'operator'],
         required=False,
-        allow_null=True,
-        help_text='ID da escola (obrigatório para não-superusers)'
+        allow_null=True
     )
-    tipo_perfil = serializers.ChoiceField(
-        choices=['gestor', 'operador'],
-        required=False,
-        allow_null=True,
-        help_text='Tipo de perfil: gestor ou operador'
-    )
-
+    
     def validate_username(self, value):
-        """Validar se username já existe"""
         if User.objects.filter(username=value).exists():
-            raise serializers.ValidationError("Este nome de usuário já está em uso.")
+            raise serializers.ValidationError("Username already exists")
         return value
-
+    
     def validate_email(self, value):
-        """Validar se email já existe"""
         if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError("Este email já está cadastrado.")
+            raise serializers.ValidationError("Email already registered")
         return value
-
+    
     def validate(self, data):
-        """Validações gerais"""
-        # Senhas devem coincidir
         if data['password'] != data['password2']:
-            raise serializers.ValidationError({"password": "As senhas não coincidem."})
-
-        # Verificar se é criação por superuser
+            raise serializers.ValidationError({"password": "Passwords don't match"})
+        
         request = self.context.get('request')
-        is_superuser_creating = (
-            request and
-            request.user and
+        is_superuser = (
+            request and request.user and 
             request.user.is_authenticated and
             (request.user.is_superuser or request.user.is_staff)
         )
-
-        # Se NÃO for superuser criando, escola e tipo são obrigatórios
-        if not is_superuser_creating:
-            if not data.get('escola_id'):
+        
+        if not is_superuser:
+            if not data.get('school_id'):
                 raise serializers.ValidationError({
-                    "escola_id": "Escola é obrigatória para criação de usuários."
+                    "school_id": "School is required"
                 })
-
-            if not data.get('tipo_perfil'):
+            if not data.get('role'):
                 raise serializers.ValidationError({
-                    "tipo_perfil": "Tipo de perfil é obrigatório (gestor ou operador)."
+                    "role": "Role is required (manager or operator)"
                 })
-
-            # Validar se escola existe
-            from apps.schools.models import Escola
-            try:
-                Escola.objects.get(id=data['escola_id'])
-            except Escola.DoesNotExist:
-                raise serializers.ValidationError({
-                    "escola_id": "Escola não encontrada."
-                })
-
+        
         return data
-
+    
     def create(self, validated_data):
-        """Criar novo usuário com perfil"""
         validated_data.pop('password2')
         password = validated_data.pop('password')
-        escola_id = validated_data.pop('escola_id', None)
-        tipo_perfil = validated_data.pop('tipo_perfil', None)
-
-        # Criar usuário
+        school_id = validated_data.pop('school_id', None)
+        role = validated_data.pop('role', None)
+        
         user = User.objects.create_user(
             username=validated_data['username'],
             email=validated_data['email'],
@@ -140,35 +110,30 @@ class RegistroSerializer(serializers.Serializer):
             first_name=validated_data.get('first_name', ''),
             last_name=validated_data.get('last_name', '')
         )
-
-        # Se tiver escola, criar perfil
-        if escola_id and tipo_perfil:
-            PerfilUsuario.objects.create(
-                usuario=user,
-                escola_id=escola_id,
-                tipo=tipo_perfil
+        
+        if school_id and role:
+            UserProfile.objects.create(
+                user=user,
+                school_id=school_id,
+                role=role
             )
-
+        
         return user
 
 
 class LoginSerializer(serializers.Serializer):
-    """Serializer para login"""
-    username = serializers.CharField(required=True, max_length=150)
+    """Login serializer"""
+    username = serializers.CharField(required=True)
     password = serializers.CharField(required=True, write_only=True)
-
+    
     def validate(self, data):
-        """Autenticar usuário"""
-        username = data.get('username')
-        password = data.get('password')
-
-        if not username or not password:
-            raise serializers.ValidationError("Username e password são obrigatórios.")
-
-        user = authenticate(username=username, password=password)
-
+        user = authenticate(
+            username=data.get('username'),
+            password=data.get('password')
+        )
+        
         if not user:
-            raise serializers.ValidationError("Username ou password incorretos.")
-
+            raise serializers.ValidationError("Invalid credentials")
+        
         data['user'] = user
         return data

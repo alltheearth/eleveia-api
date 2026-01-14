@@ -1,17 +1,24 @@
+# ===================================================================
+# apps/documents/serializers.py
+# ===================================================================
 from rest_framework import serializers
-from .models import (
-    Documento
-)
+from .models import Document
 
-class DocumentoSerializer(serializers.ModelSerializer):
-    """Serializer para Documento"""
-    escola_nome = serializers.CharField(source='escola.nome_escola', read_only=True)
+
+class DocumentSerializer(serializers.ModelSerializer):
+    """Document serializer"""
+    school_name = serializers.CharField(source='school.school_name', read_only=True)
 
     class Meta:
-        model = Documento
+        model = Document
         fields = [
-            'id', 'escola', 'escola_nome', 'nome', 'arquivo',
-            'status', 'criado_em', 'atualizado_em'
+            'id',
+            'school',
+            'school_name',
+            'name',
+            'file',
+            'status',
+            'created_at',
+            'updated_at',
         ]
-        read_only_fields = ['id', 'escola_nome', 'criado_em', 'atualizado_em']
-
+        read_only_fields = ['id', 'school_name', 'created_at', 'updated_at']
