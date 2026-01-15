@@ -1,8 +1,9 @@
 # ===================================================================
-# apps/users/models.py - REFATORADO COM 4 NÍVEIS DE ACESSO
+# apps/users/models.py - VERSÃO CORRIGIDA SEM CONSTRAINT INVÁLIDA
 # ===================================================================
 from django.db import models
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from rest_framework.authtoken.models import Token
@@ -12,10 +13,13 @@ class UserProfile(models.Model):
     """
     Perfil de usuário com 4 níveis hierárquicos:
 
-    1. SUPERUSER (Django is_superuser) - Não precisa de perfil
+    1. SUPERUSER (Django is_superuser) - Não precisa de perfil obrigatório
     2. MANAGER - Gestor da escola
     3. OPERATOR - Operador/Auxiliar da escola
     4. END_USER - Cliente/Aluno/Responsável
+
+    VALIDAÇÃO: Superusers podem ter school=NULL, outros usuários DEVEM ter escola.
+    Esta validação é feita em nível de aplicação (clean/save), não no banco de dados.
     """
 
     ROLE_CHOICES = [
@@ -89,23 +93,47 @@ class UserProfile(models.Model):
             models.Index(fields=['school', 'role']),
             models.Index(fields=['user', 'is_active']),
         ]
-        constraints = [
-            # Superusers não precisam de escola, outros precisam
-            models.CheckConstraint(
-                check=(
-                        models.Q(user__is_superuser=True) |
-                        models.Q(school__isnull=False)
-                ),
-                name='school_required_for_non_superuser'
-            )
-        ]
+        # ✅ REMOVIDO: Constraint inválida com joined field
+        # A validação agora é feita em clean() e no serializer
 
     def __str__(self):
         role_display = self.get_role_display()
         school_name = self.school.school_name if self.school else 'Sistema'
         return f"{self.user.username} - {role_display} ({school_name})"
 
-    # Métodos de verificação de permissão
+    def clean(self):
+        """
+        ✅ VALIDAÇÃO EM NÍVEL DE APLICAÇÃO
+
+        Regra de negócio: Superusers não precisam de escola,
+        mas usuários normais (manager, operator, end_user) precisam.
+        """
+        super().clean()
+
+        # Superusers e staff podem não ter escola
+        if self.user.is_superuser or self.user.is_staff:
+            return
+
+        # Usuários normais DEVEM ter escola
+        if not self.school:
+            raise ValidationError({
+                'school': 'Non-superuser profiles must have a school assigned. '
+                          'Only superusers can have no school.'
+            })
+
+    def save(self, *args, **kwargs):
+        """
+        Sobrescreve save() para chamar clean() automaticamente.
+        Garante que a validação sempre será executada.
+        """
+        # Executa validações antes de salvar
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    # ===============================================================
+    # MÉTODOS DE VERIFICAÇÃO DE PERMISSÃO
+    # ===============================================================
+
     def is_superuser(self):
         """Verifica se é superusuário Django"""
         return self.user.is_superuser or self.user.is_staff
@@ -163,20 +191,20 @@ class UserProfile(models.Model):
 def create_user_token(sender, instance=None, created=False, **kwargs):
     """Cria token automaticamente para novos usuários"""
     if created:
-        Token.objects.create(user=instance)
+        Token.objects.get_or_create(user=instance)
 
 
 @receiver(post_save, sender=User)
 def create_superuser_profile(sender, instance=None, created=False, **kwargs):
     """
     Cria perfil automaticamente para superusers
-    (sem escola vinculada)
+    (sem escola vinculada, conforme regra de negócio)
     """
     if created and (instance.is_superuser or instance.is_staff):
         if not hasattr(instance, 'profile'):
             UserProfile.objects.create(
                 user=instance,
-                school=None,  # Superusers não precisam de escola
+                school=None,  # ✅ Superusers não precisam de escola
                 role='manager',
                 is_active=True
             )
