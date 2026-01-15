@@ -1,5 +1,5 @@
 # ===================================================================
-# apps/contacts/views.py
+# apps/contacts/views.py - CORRIGIDO
 # ===================================================================
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -11,15 +11,15 @@ from datetime import timedelta
 
 from .models import WhatsAppContact
 from .serializers import WhatsAppContactSerializer
-from core.permissions import IsManagerOrOperator
-from core.mixins import SchoolFilterMixin
+from core.permissions import IsSchoolStaff  # ✅ CORRIGIDO: era IsManagerOrOperator
+from core.mixins import SchoolIsolationMixin
 
 
-class WhatsAppContactViewSet(SchoolFilterMixin, viewsets.ModelViewSet):
+class WhatsAppContactViewSet(SchoolIsolationMixin, viewsets.ModelViewSet):
     """WhatsApp contacts management"""
     queryset = WhatsAppContact.objects.select_related('school', 'created_by')
     serializer_class = WhatsAppContactSerializer
-    permission_classes = [IsManagerOrOperator]
+    permission_classes = [IsSchoolStaff]  # ✅ CORRIGIDO
     filter_backends = [SearchFilter, OrderingFilter]
     search_fields = ['full_name', 'email', 'phone', 'tags']
     ordering_fields = ['full_name', 'created_at', 'status', 'last_interaction_at']
