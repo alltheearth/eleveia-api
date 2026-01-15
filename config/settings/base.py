@@ -36,9 +36,9 @@ LOCAL_APPS = [
     'apps.events',
     'apps.faqs',
     'apps.documents',
-    #'apps.dashboard',
-    #'apps.tickets',
-    #'apps.leads',
+    'apps.dashboard',
+    'apps.tickets',
+    'apps.leads',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

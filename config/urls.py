@@ -26,9 +26,9 @@ urlpatterns = [
         path('events/', include('apps.events.urls')),
         path('faqs/', include('apps.faqs.urls')),
         path('documents/', include('apps.documents.urls')),
-        #path('dashboard/', include('apps.dashboard.urls')),
-        #path('tickets/', include('apps.tickets.urls')),
-        #path('leads/', include('apps.leads.urls')),
+        path('dashboard/', include('apps.dashboard.urls')),
+        path('tickets/', include('apps.tickets.urls')),
+        path('leads/', include('apps.leads.urls')),
         
         # ✅ CORRIGIDO: Documentação sem duplicar 'api/'
         path('schema/', SpectacularAPIView.as_view(), name='schema'),
@@ -49,23 +49,3 @@ if settings.DEBUG:
 admin.site.site_header = "EleveAI Admin"
 admin.site.site_title = "EleveAI"
 admin.site.index_title = "Gestão de Escolas"
-
-
-# ===================================================================
-# ROTAS DISPONÍVEIS APÓS CORREÇÃO:
-# ===================================================================
-# ✅ /admin/                         - Django Admin
-# ✅ /api/v1/auth/login/            - Login
-# ✅ /api/v1/auth/registro/         - Registro
-# ✅ /api/v1/schools/               - Escolas
-# ✅ /api/v1/contacts/              - Contatos
-# ✅ /api/v1/events/                - Eventos
-# ✅ /api/v1/faqs/                  - FAQs
-# ✅ /api/v1/documents/             - Documentos
-# ✅ /api/v1/dashboard/metrics/     - Métricas
-# ✅ /api/v1/tickets/               - Tickets
-# ✅ /api/v1/leads/                 - Leads
-# ✅ /api/v1/schema/                - Schema OpenAPI
-# ✅ /api/v1/docs/                  - Swagger UI
-# ✅ /api/v1/redoc/                 - ReDoc
-# ===================================================================

@@ -1,28 +1,44 @@
+# ===================================================================
+# apps/leads/views.py - VERSÃO CORRIGIDA
+# ===================================================================
 from rest_framework import viewsets
 from rest_framework.filters import SearchFilter, OrderingFilter
 
 from .models import Lead
 from .serializers import LeadSerializer
+from core.permissions import IsSchoolStaff
+from core.mixins import SchoolIsolationMixin
 
-from core.permissions import EscolaPermission
 
+class LeadViewSet(SchoolIsolationMixin, viewsets.ModelViewSet):
+    """
+    ViewSet para Leads.
 
-class TicketViewSet(viewsets.ModelViewSet):
-    """ViewSet para Ticket"""
+    Leads capturados pelo agente IA ou outros canais.
+
+    Permissões:
+    - School Staff: CRUD completo na sua escola
+    - Superuser: Acesso a todos os leads
+    """
+    queryset = Lead.objects.select_related('school')
     serializer_class = LeadSerializer
-    permission_classes = [EscolaPermission]
+    permission_classes = [IsSchoolStaff]
     filter_backends = [SearchFilter, OrderingFilter]
-    search_fields = ['title', 'description', 'status']
-    ordering_fields = ['title', 'create_at']
+    search_fields = ['name', 'email', 'telephone', 'status', 'origin']
+    ordering_fields = ['name', 'status', 'created_at', 'converted_at']
 
     def get_queryset(self):
-        """Retorna tickets conforme permissão"""
-        if self.request.user.is_superuser or self.request.user.is_staff:
-            return Lead.objects.all()
+        """Filtros adicionais"""
+        queryset = super().get_queryset()
 
-        if hasattr(self.request.user, 'perfil'):
-            return Lead.objects.filter(id=self.request.user.perfil.escola.id)
+        # Filtro por status
+        status_param = self.request.query_params.get('status')
+        if status_param:
+            queryset = queryset.filter(status=status_param)
 
-        return Lead.objects.none()
+        # Filtro por origem
+        origin_param = self.request.query_params.get('origin')
+        if origin_param:
+            queryset = queryset.filter(origin=origin_param)
 
-
+        return queryset
