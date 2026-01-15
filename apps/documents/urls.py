@@ -1,10 +1,14 @@
-# ===== apps/documents/urls.py =====
+
+# ===================================================================
+# apps/documents/urls.py - CORRIGIDO
+# ===================================================================
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
 
 router = DefaultRouter()
-router.register(r'', views.DocumentoViewSet, basename='documento')
+# ✅ CORRETO: Usa DocumentViewSet
+router.register(r'', views.DocumentViewSet, basename='document')
 
 urlpatterns = [
     path('', include(router.urls)),

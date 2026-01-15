@@ -1,49 +1,50 @@
 """
-Mixins reutilizáveis para ViewSets
+core/mixins.py
+Refactored mixins with English naming
 """
 
 
-class UsuarioEscolaMixin:
+class SchoolFilterMixin:
     """
-    Mixin para ViewSets que precisam filtrar por escola do usuário
+    Mixin for ViewSets that need to filter by user's school.
+
+    Behavior:
+    - Superuser: sees everything
+    - Regular user: sees only their school's data
     """
 
     def get_queryset(self):
-        """
-        Retorna queryset filtrado:
-        - Superuser: tudo
-        - Usuário comum: apenas da sua escola
-        """
+        """Filter queryset by user's school"""
         queryset = super().get_queryset()
 
+        # Superusers see everything
         if self.request.user.is_superuser or self.request.user.is_staff:
             return queryset
 
-        if hasattr(self.request.user, 'perfil'):
-            return queryset.filter(escola=self.request.user.perfil.escola)
+        # Regular users see only their school's data
+        if hasattr(self.request.user, 'profile'):
+            return queryset.filter(school=self.request.user.profile.school)
 
+        # No profile = no access
         return queryset.none()
 
     def perform_create(self, serializer):
-        """
-        Ao criar, vincula automaticamente à escola do usuário
-        """
-        if hasattr(self.request.user, 'perfil'):
+        """Automatically link to user's school on creation"""
+        if hasattr(self.request.user, 'profile'):
             serializer.save(
-                usuario=self.request.user,
-                escola=self.request.user.perfil.escola
+                created_by=self.request.user,
+                school=self.request.user.profile.school
             )
         else:
-            serializer.save(usuario=self.request.user)
+            serializer.save(created_by=self.request.user)
 
 
 class TimestampMixin:
     """
-    Mixin para adicionar timestamps automáticos
+    Mixin for models with automatic timestamps.
+    Note: This is rarely needed as Django handles this with auto_now/auto_now_add
     """
-    criado_em = None
-    atualizado_em = None
 
     def save(self, *args, **kwargs):
-        """Adiciona timestamps antes de salvar"""
+        """Hook for additional save logic"""
         super().save(*args, **kwargs)

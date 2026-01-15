@@ -1,6 +1,6 @@
-from django.apps import AppConfig
+"""from django.apps import AppConfig
 
 class LeadsConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.leads'
-    verbose_name = 'Leads'
+    verbose_name = 'Leads'"""

@@ -1,10 +1,13 @@
-# ===== apps/events/urls.py =====
+# ===================================================================
+# apps/events/urls.py - CORRIGIDO
+# ===================================================================
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
 
 router = DefaultRouter()
-router.register(r'', views.CalendarioEventoViewSet, basename='evento')
+# ✅ CORRETO: Usa CalendarEventViewSet
+router.register(r'', views.CalendarEventViewSet, basename='event')
 
 urlpatterns = [
     path('', include(router.urls)),

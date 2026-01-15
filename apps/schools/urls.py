@@ -1,12 +1,14 @@
-"""
-URLs do app de escolas
-"""
+
+# ===================================================================
+# apps/schools/urls.py - CORRIGIDO
+# ===================================================================
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
 
 router = DefaultRouter()
-router.register(r'', views.EscolaViewSet, basename='escola')
+# ✅ CORRETO: Usa SchoolViewSet
+router.register(r'', views.SchoolViewSet, basename='school')
 
 urlpatterns = [
     path('', include(router.urls)),
