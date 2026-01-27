@@ -1,5 +1,5 @@
 # ===================================================================
-# apps/faqs/models.py - COMPLETE REFACTORED VERSION
+# apps/faqs/models.py - ENGLISH VERSION
 # ===================================================================
 from django.db import models
 from django.contrib.auth.models import User
@@ -9,8 +9,21 @@ class FAQ(models.Model):
     """Frequently Asked Questions"""
 
     STATUS_CHOICES = [
-        ('active', 'Ativa'),
-        ('inactive', 'Inativa'),
+        ('active', 'Active'),
+        ('inactive', 'Inactive'),
+    ]
+
+    CATEGORY_CHOICES = [
+        ('Admission', 'Admission'),
+        ('Pricing', 'Pricing'),
+        ('Uniform', 'Uniform'),
+        ('Schedule', 'Schedule'),
+        ('Documentation', 'Documentation'),
+        ('Activities', 'Activities'),
+        ('Meals', 'Meals'),
+        ('Transport', 'Transport'),
+        ('Pedagogical', 'Pedagogical'),
+        ('General', 'General'),
     ]
 
     created_by = models.ForeignKey(
@@ -19,29 +32,30 @@ class FAQ(models.Model):
         related_name='created_faqs',
         null=True,
         blank=True,
-        verbose_name='Criado por'
+        verbose_name='Created by'
     )
 
     school = models.ForeignKey(
         'schools.School',
         on_delete=models.CASCADE,
         related_name='faqs',
-        verbose_name='Escola'
+        verbose_name='School'
     )
 
     question = models.CharField(
         max_length=500,
-        verbose_name='Pergunta'
+        verbose_name='Question'
     )
 
     answer = models.TextField(
         blank=True,
-        verbose_name='Resposta'
+        verbose_name='Answer'
     )
 
     category = models.CharField(
         max_length=100,
-        verbose_name='Categoria'
+        choices=CATEGORY_CHOICES,
+        verbose_name='Category'
     )
 
     status = models.CharField(
@@ -53,12 +67,12 @@ class FAQ(models.Model):
 
     created_at = models.DateTimeField(
         auto_now_add=True,
-        verbose_name='Criado em'
+        verbose_name='Created at'
     )
 
     updated_at = models.DateTimeField(
         auto_now=True,
-        verbose_name='Atualizado em'
+        verbose_name='Updated at'
     )
 
     class Meta:
