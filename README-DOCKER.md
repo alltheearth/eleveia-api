@@ -1,117 +1,61 @@
-# 🐳 Guia de Uso do Docker - EleveIA API
+# 🐳 Docker Quick Start - EleveIA
 
-## 📋 Pré-requisitos
-
-- Docker instalado
-- Docker Compose instalado
-- Arquivo `.env` configurado
-
-## 🚀 Como Usar
-
-### 1️⃣ Configuração Inicial
-
-Copie o arquivo de exemplo e configure suas variáveis:
+## 🚀 Início Rápido (3 comandos)
 
 ```bash
-cp .env.example .env
+# 1. Configurar
+cp .env.docker .env
+
+# 2. Tornar script executável
+chmod +x docker-manager.sh
+
+# 3. Iniciar tudo
+./docker-manager.sh start
 ```
 
-Edite o `.env` conforme sua necessidade (PostgreSQL local ou Supabase).
+**Pronto!** Acesse: http://localhost:8000/api/v1/
 
-### 2️⃣ Criar a Estrutura de Diretórios
+---
 
-Crie a estrutura de comandos management:
+## 📋 Comandos Principais
 
 ```bash
-mkdir -p eleveai/management/commands
-touch eleveai/management/__init__.py
-touch eleveai/management/commands/__init__.py
+./docker-manager.sh start              # Inicia tudo (recomendado na 1ª vez)
+./docker-manager.sh start-simple       # Inicia sem migrations (uso diário)
+./docker-manager.sh stop               # Para containers
+./docker-manager.sh logs-web           # Ver logs
+./docker-manager.sh shell              # Django shell
+./docker-manager.sh createsuperuser    # Criar admin
+./docker-manager.sh test               # Rodar testes
+./docker-manager.sh help               # Ver todos os comandos
 ```
 
-Depois copie o conteúdo de `wait_for_db.py` para:
+---
+
+## 🎯 URLs Importantes
+
+- **API**: http://localhost:8000/api/v1/
+- **Admin**: http://localhost:8000/admin/
+- **Swagger**: http://localhost:8000/api/v1/docs/
+- **PostgreSQL**: localhost:5432
+
+---
+
+## 🔧 Comandos Docker Diretos
+
+Se preferir usar Docker Compose diretamente:
+
 ```bash
-eleveai/management/commands/wait_for_db.py
-```
-
-## 🎯 Cenários de Uso
-
-### 🏠 Cenário 1: PostgreSQL Local (Docker)
-
-**Configuração no `.env`:**
-```bash
-DB_NAME=postgres
-DB_USER=postgres
-DB_PASSWORD=postgres
-DB_HOST=db
-DB_PORT=5432
-```
-
-**Iniciar os serviços:**
-```bash
-# Build e start
-docker-compose up --build
-
-# Ou em background
+# Start
 docker-compose up -d --build
-```
 
-**Criar superusuário:**
-```bash
-docker-compose exec web python manage.py createsuperuser
-```
+# Stop
+docker-compose down
 
-### ☁️ Cenário 2: Supabase (Banco Externo)
-
-**Configuração no `.env`:**
-```bash
-DB_NAME=postgres
-DB_USER=postgres.nclbzvjypyjayiywwxgz
-DB_PASSWORD=5ri*jPJuK@4jXK!
-DB_HOST=aws-1-us-east-1.pooler.supabase.com
-DB_PORT=6543
-```
-
-**Desabilitar PostgreSQL local:**
-```bash
-# Edite docker-compose.yml e adicione profile ao serviço db:
-# profiles: ["local-db"]
-```
-
-**Iniciar apenas a aplicação:**
-```bash
-docker-compose up web --build
-```
-
-### 🚀 Cenário 3: Produção com Nginx
-
-**Iniciar com Nginx:**
-```bash
-docker-compose --profile production up -d --build
-```
-
-Isso irá:
-- Iniciar o PostgreSQL (se configurado)
-- Iniciar a aplicação Django
-- Iniciar o Nginx na porta 80
-
-## 🔧 Comandos Úteis
-
-### Ver logs
-```bash
-# Todos os serviços
-docker-compose logs -f
-
-# Apenas a aplicação
+# Logs
 docker-compose logs -f web
 
-# Apenas o banco
-docker-compose logs -f db
-```
-
-### Executar comandos Django
-```bash
 # Migrations
-docker-compose exec web python manage.py makemigrations
 docker-compose exec web python manage.py migrate
 
 # Shell
@@ -119,134 +63,83 @@ docker-compose exec web python manage.py shell
 
 # Criar superuser
 docker-compose exec web python manage.py createsuperuser
-
-# Coletar static files
-docker-compose exec web python manage.py collectstatic
 ```
 
-### Parar e remover containers
+---
+
+## 📊 Escolher Banco de Dados
+
+### Opção 1: PostgreSQL Local (Docker) ✅ Recomendado
+
+Já está configurado por padrão. Apenas rode:
+
 ```bash
-# Parar
-docker-compose stop
-
-# Parar e remover
-docker-compose down
-
-# Parar, remover e limpar volumes (⚠️ apaga dados do banco)
-docker-compose down -v
+./docker-manager.sh start
 ```
 
-### Rebuild completo
+### Opção 2: Supabase (Externo)
+
+1. Edite `.env`:
 ```bash
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
+DB_HOST=aws-1-sa-east-1.pooler.supabase.com
+DB_PORT=6543
+DB_USER=postgres.ljeratmjitkxleakbywv
+DB_PASSWORD=5ri*jPJuK@4jXK!
 ```
 
-### Acessar bash do container
-```bash
-docker-compose exec web bash
+2. Edite `docker-compose.yml` e adicione ao serviço `db`:
+```yaml
+profiles: ["local-db"]
 ```
 
-## 🌐 Acessar a Aplicação
-
-- **API**: http://localhost:8000/api/
-- **Admin**: http://localhost:8000/admin/
-- **Nginx (produção)**: http://localhost/
-
-## 🔍 Troubleshooting
-
-### Erro de conexão com banco de dados
-
-1. Verifique se o serviço db está rodando:
+3. Inicie apenas o web:
 ```bash
-docker-compose ps
+docker-compose up web -d --build
 ```
 
-2. Teste a conexão:
+---
+
+## 🛠 Troubleshooting Rápido
+
+### Erro: "Port already in use"
 ```bash
-docker-compose exec db psql -U postgres -d postgres
+# Parar PostgreSQL local
+sudo systemctl stop postgresql
+
+# OU mudar porta no docker-compose.yml
+ports:
+  - "5433:5432"
 ```
 
-3. Verifique as variáveis de ambiente:
+### Migrations não aplicadas
 ```bash
-docker-compose exec web env | grep DB_
-```
-
-### Permissões de arquivo
-
-Se tiver problemas com permissões:
-```bash
-sudo chown -R $USER:$USER .
+./docker-manager.sh migrate
 ```
 
 ### Limpar tudo e começar do zero
-
 ```bash
-docker-compose down -v
-docker system prune -a
-docker volume prune
+./docker-manager.sh clean  # ⚠️ Apaga TUDO
+./docker-manager.sh start
 ```
 
-## 📝 Estrutura de Arquivos
+---
 
-```
-eleveia-api/
-├── Dockerfile
-├── docker-compose.yml
-├── .dockerignore
-├── .env
-├── .env.example
-├── nginx.conf (opcional)
-├── manage.py
-├── config/
-│   ├── settings.py
-│   ├── urls.py
-│   └── wsgi.py
-├── eleveai/
-│   ├── management/
-│   │   ├── __init__.py
-│   │   └── commands/
-│   │       ├── __init__.py
-│   │       └── wait_for_db.py
-│   ├── models.py
-│   ├── views.py
-│   └── ...
-└── staticfiles/
-```
+## 📖 Documentação Completa
 
-## 🔒 Segurança em Produção
+Ver `DOCKER-GUIDE.md` para documentação detalhada.
 
-Para produção, lembre-se de:
+---
 
-1. **Mudar DEBUG para False:**
-```bash
-DEBUG=False
-```
+## 🎯 Próximos Passos
 
-2. **Usar SECRET_KEY forte:**
-```bash
-SECRET_KEY=$(python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())')
-```
+1. ✅ Rodar `./docker-manager.sh start`
+2. ✅ Criar superuser: `./docker-manager.sh createsuperuser`
+3. ✅ Acessar admin: http://localhost:8000/admin/
+4. ✅ Testar API: http://localhost:8000/api/v1/docs/
+5. ✅ Desenvolver! 🚀
 
-3. **Configurar ALLOWED_HOSTS:**
-```bash
-ALLOWED_HOSTS=seudominio.com,www.seudominio.com
-```
+---
 
-4. **Usar HTTPS (SSL/TLS)**
-
-5. **Não commitar o .env no git**
-
-## 💡 Dicas
-
-- Use `docker-compose up` sem `-d` para ver logs em tempo real durante desenvolvimento
-- Configure volumes para persistir dados importantes
-- Use `--build` quando mudar dependências no `requirements.txt` ou `pyproject.toml`
-- Para desenvolvimento, os volumes mapeiam seu código local, permitindo hot-reload
-
-## 📚 Recursos Adicionais
-
-- [Documentação Docker](https://docs.docker.com/)
-- [Documentação Docker Compose](https://docs.docker.com/compose/)
-- [Django Deployment Checklist](https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/)
+**Stack**: Docker | PostgreSQL 16 | Django 5.2 | DRF  
+**Porta API**: 8000  
+**Porta DB**: 5432

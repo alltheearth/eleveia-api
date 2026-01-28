@@ -1,14 +1,9 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
-echo "🔄 Aguardando banco de dados..."
-python manage.py wait_for_db || sleep 5
+echo "🟢 Starting Django (Supabase DB)"
 
-echo "🔄 Executando migrações..."
 python manage.py migrate --noinput
-
-echo "🔄 Coletando arquivos estáticos..."
 python manage.py collectstatic --noinput
 
-echo "✅ Iniciando servidor..."
 exec "$@"
