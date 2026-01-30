@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 from decouple import config
 
+from config.settings import DEBUG
+
 # Build paths
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -39,6 +41,7 @@ LOCAL_APPS = [
     'apps.dashboard',
     'apps.tickets',
     'apps.leads',
+    'apps.storage',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -205,3 +208,30 @@ LOGGING = {
 # Create logs directory if it doesn't exist
 LOGS_DIR = BASE_DIR / 'logs'
 LOGS_DIR.mkdir(exist_ok=True)
+
+# config/settings/base.py
+
+# ===================================================================
+# CLOUDFLARE R2 STORAGE CONFIGURATION
+# ===================================================================
+
+R2_ACCOUNT_ID = config('R2_ACCOUNT_ID', default='')
+R2_ACCESS_KEY_ID = config('R2_ACCESS_KEY_ID', default='')
+R2_SECRET_ACCESS_KEY = config('R2_SECRET_ACCESS_KEY', default='')
+R2_BUCKET_PREFIX = config('R2_BUCKET_PREFIX', default='eleve-app')
+
+# R2 Endpoint (formato padrão)
+R2_ENDPOINT_URL = f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com'
+
+# Validação em produção
+if not DEBUG:
+    if not all([R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY]):
+        raise ValueError('R2 credentials must be set in production')
+
+# Storage Configuration
+STORAGE_MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
+STORAGE_ALLOWED_EXTENSIONS = [
+    'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+    'jpg', 'jpeg', 'png', 'gif', 'webp',
+    'txt', 'csv', 'zip', 'rar'
+]
