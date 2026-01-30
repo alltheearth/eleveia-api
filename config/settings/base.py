@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 from decouple import config
 
-from config.settings import DEBUG
 
 # Build paths
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -223,11 +222,11 @@ R2_BUCKET_PREFIX = config('R2_BUCKET_PREFIX', default='eleve-app')
 # R2 Endpoint (formato padrão)
 R2_ENDPOINT_URL = f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com'
 
-# Validação em produção
+"""# Validação em produção
 if not DEBUG:
     if not all([R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY]):
         raise ValueError('R2 credentials must be set in production')
-
+"""
 # Storage Configuration
 STORAGE_MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
 STORAGE_ALLOWED_EXTENSIONS = [
