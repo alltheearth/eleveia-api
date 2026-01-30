@@ -35,8 +35,8 @@ class FAQSerializer(serializers.ModelSerializer):
 
     def validate_answer(self, value):
         """Validate answer"""
-        if len(value.strip()) < 20:
+        if len(value.strip()) < 3:
             raise serializers.ValidationError(
-                "Answer must be at least 20 characters long"
+                "Answer must be at least 3 characters long"
             )
         return value.strip()
