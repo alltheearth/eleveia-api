@@ -29,6 +29,7 @@ urlpatterns = [
         path('dashboard/', include('apps.dashboard.urls')),
         path('tickets/', include('apps.tickets.urls')),
         path('leads/', include('apps.leads.urls')),
+        path('storage/', include('apps.storage.urls')),
         
         # ✅ CORRIGIDO: Documentação sem duplicar 'api/'
         path('schema/', SpectacularAPIView.as_view(), name='schema'),

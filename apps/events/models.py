@@ -2,6 +2,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 
 class CalendarEvent(models.Model):
@@ -31,8 +32,8 @@ class CalendarEvent(models.Model):
     )
 
     # ✅ NEW: Date range instead of single date
-    start_date = models.DateField(verbose_name='Start Date')
-    end_date = models.DateField(verbose_name='End Date')
+    start_date = models.DateField(verbose_name='Start Date', default=timezone.now)
+    end_date = models.DateField(verbose_name='End Date', null=True)
 
     title = models.CharField(
         max_length=255,
