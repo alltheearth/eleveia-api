@@ -234,3 +234,32 @@ STORAGE_ALLOWED_EXTENSIONS = [
     'jpg', 'jpeg', 'png', 'gif', 'webp',
     'txt', 'csv', 'zip', 'rar'
 ]
+
+# ===================================================================
+# REDIS & CACHE
+# ===================================================================
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:6379/1',
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        },
+        'KEY_PREFIX': 'eleveai',
+        'TIMEOUT': 900,  # 15 minutos
+    }
+}
+
+# ===================================================================
+# CELERY
+# ===================================================================
+
+CELERY_BROKER_URL = 'redis://127.0.0.1:6379/0'
+CELERY_RESULT_BACKEND = 'redis://127.0.0.1:6379/0'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'America/Sao_Paulo'
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutos max
