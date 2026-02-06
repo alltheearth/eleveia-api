@@ -6,7 +6,7 @@ from ..schools.models import School
 from core.mixins import SchoolIsolationMixin
 
 class StudentGuardianView(APIView):
-    def get(self, request, student_id):
+    def get(self):
         try:
             # Recomendo usar .filter().first() ou tratar a busca dinamicamente
             escola = School.objects.get(id=SchoolIsolationMixin.get_queryset())
@@ -17,7 +17,6 @@ class StudentGuardianView(APIView):
         # 2. Configura a URL com o filtro do aluno
         # Verifique na documentação do SIGA se o parâmetro é 'aluno_id', 'student_id', etc.
         url = "https://siga.activesoft.com.br/api/v0/lista_responsaveis_dados_sensiveis/"
-        params = {'aluno_id': student_id}  # Exemplo de parâmetro
 
         headers = {
             "Authorization": f"Bearer {token}",
@@ -26,7 +25,7 @@ class StudentGuardianView(APIView):
 
         try:
             # Passamos os 'params' para o requests montar a URL final corretamente
-            response = requests.get(url, headers=headers, params=params, timeout=10)
+            response = requests.get(url, headers=headers, timeout=10)
 
             # Se o SIGA retornar erro (ex: 401), o DRF repassa o status corretamente
             return Response(response.json(), status=response.status_code)

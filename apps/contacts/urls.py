@@ -13,6 +13,6 @@ urlpatterns = [
 
     # ✅ Rotas manuais para APIViews (StudentGuardianView)
     # Note que ela fica FORA do router.register
-    path('students/<int:student_id>/guardians/', views_new.StudentGuardianView.as_view(), name='student-guardians'),
+    path('students/guardians/', views_new.StudentGuardianView.as_view(), name='student-guardians'),
     path('students/<int:student_id>/invoices/', views_new.StudentInvoiceView.as_view())
 ]
