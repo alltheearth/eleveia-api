@@ -43,7 +43,7 @@ class SchoolAdmin(admin.ModelAdmin):
 
     fieldsets = (
         ('Informações Protegidas (Superuser Only)', {
-            'fields': ('school_name', 'tax_id', 'messaging_token'),
+            'fields': ('school_name', 'tax_id', 'messaging_token', 'application_token'),
             'description': 'Apenas superusuários podem modificar estes campos'
         }),
         ('Contato', {
@@ -83,7 +83,7 @@ class SchoolAdmin(admin.ModelAdmin):
         readonly = list(super().get_readonly_fields(request, obj))
 
         if obj and not request.user.is_superuser:
-            readonly.extend(['school_name', 'tax_id', 'messaging_token'])
+            readonly.extend(['school_name', 'tax_id', 'messaging_token', 'application_token'])
 
         return readonly
 

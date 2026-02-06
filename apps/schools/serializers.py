@@ -15,7 +15,7 @@ class SchoolSerializer(serializers.ModelSerializer):
     """
 
     # Campos protegidos por nível
-    SUPER_PROTECTED_FIELDS = ['school_name', 'tax_id', 'messaging_token']
+    SUPER_PROTECTED_FIELDS = ['school_name', 'tax_id', 'messaging_token', 'application_token']
     MANAGER_EDITABLE_FIELDS = [
         'phone', 'email', 'website', 'logo',
         'postal_code', 'street_address', 'city', 'state',
@@ -29,6 +29,7 @@ class SchoolSerializer(serializers.ModelSerializer):
             'school_name',
             'tax_id',
             'messaging_token',
+            'application_token',
             'phone',
             'email',
             'website',
@@ -46,6 +47,10 @@ class SchoolSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
         extra_kwargs = {
             'messaging_token': {
+                'write_only': True,
+                'required': False,
+            },
+            'application_token': {
                 'write_only': True,
                 'required': False,
             },

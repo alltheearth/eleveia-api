@@ -35,6 +35,13 @@ class School(models.Model):
         help_text='WhatsApp API token (superuser only)'
     )
 
+    application_token = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name='Token da Aplicação (SIGA | etc...)',
+        help_text='Application API token (superuser only)'
+    )
+
     # Contact information
     phone = models.CharField(
         max_length=20,
