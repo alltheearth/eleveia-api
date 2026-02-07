@@ -228,3 +228,122 @@ class SchoolResourceViewSet:
 
 # Para usar, o ViewSet deve herdar assim:
 # class MyViewSet(SchoolIsolationMixin, OptimizedQueryMixin, viewsets.ModelViewSet)
+
+class SigaIntegrationMixin:
+    """
+    Mixin para views que integram com a API SIGA.
+
+    Fornece métodos para:
+    - Obter a escola do usuário logado
+    - Validar configuração da escola
+    - Fazer requisições HTTP com tratamento de erros
+    """
+
+    def get_user_school(self):
+        """
+        Obtém a escola do usuário logado seguindo o padrão do projeto.
+
+        Returns:
+            School | None: Escola do usuário ou None
+        """
+        user = self.request.user
+
+        # Superuser pode passar school_id
+        if user.is_superuser or user.is_staff:
+            school_id = self.request.query_params.get('school_id')
+            if school_id:
+                try:
+                    return School.objects.get(id=school_id)
+                except School.DoesNotExist:
+                    return None
+            return None
+
+        # Usuário normal
+        if not hasattr(user, 'profile'):
+            return None
+
+        profile = user.profile
+        if not profile.is_active or not profile.school:
+            return None
+
+        return profile.school
+
+    def validate_school_integration(self, school):
+        """
+        Valida se a escola está configurada para integração.
+
+        Args:
+            school (School | None): Escola a validar
+
+        Returns:
+            tuple: (bool, Response | None) - (válido, resposta de erro)
+        """
+        if not school:
+            return False, Response(
+                {"error": "Usuário não está vinculado a nenhuma escola."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if not school.application_token:
+            return False, Response(
+                {"error": "Escola não possui token de integração configurado."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        return True, None
+
+    def make_siga_request(self, url, school, params=None, method='GET'):
+        """
+        Faz requisição para API SIGA com tratamento de erros.
+
+        Args:
+            url (str): URL da API SIGA
+            school (School): Escola para obter o token
+            params (dict): Query parameters
+            method (str): Método HTTP (GET, POST, etc)
+
+        Returns:
+            Response: Resposta formatada ou erro tratado
+        """
+        headers = {
+            "Authorization": f"Bearer {school.application_token}",
+            "Content-Type": "application/json"
+        }
+
+        try:
+            response = requests.request(
+                method=method,
+                url=url,
+                headers=headers,
+                params=params,
+                timeout=10
+            )
+
+            return Response(
+                response.json(),
+                status=response.status_code
+            )
+
+        except requests.exceptions.Timeout:
+            return Response(
+                {"error": "Timeout: O SIGA demorou muito para responder."},
+                status=status.HTTP_504_GATEWAY_TIMEOUT
+            )
+        except requests.exceptions.ConnectionError:
+            return Response(
+                {"error": "Erro de conexão com o SIGA."},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
+        except requests.exceptions.RequestException as e:
+            return Response(
+                {
+                    "error": "Falha na comunicação com o SIGA.",
+                    "details": str(e) if settings.DEBUG else None
+                },
+                status=status.HTTP_502_BAD_GATEWAY
+            )
+        except ValueError:
+            return Response(
+                {"error": "Resposta inválida do SIGA (JSON malformado)."},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
