@@ -1,31 +1,43 @@
+# docker-compose.yml
 services:
   web:
     build: .
     container_name: eleveia_web
-    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120 --reload
+    command: /usr/local/bin/entrypoint.sh
     volumes:
       - .:/app
-      - static_volume:/app/staticfiles
-      - media_volume:/app/media
     ports:
       - "8000:8000"
     env_file:
       - .env
-    restart: unless-stopped
+    depends_on:
+      - redis
 
-  nginx:
-    image: nginx:alpine
-    container_name: eleveia_nginx
-    profiles: ["production"]
-    ports:
-      - "80:80"
+  redis:
+    image: redis:7-alpine
+    container_name: eleveia_redis
+    # ✅ REMOVER O MAPEAMENTO DE PORTA
+    # ports:
+    #   - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  scheduler:
+    image: mcuadros/ofelia:latest
+    container_name: eleveia_scheduler
     depends_on:
       - web
+      - redis
+    command: daemon --docker
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - static_volume:/app/staticfiles:ro
-      - media_volume:/app/media:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./ofelia-config.ini:/etc/ofelia/config.ini
 
 volumes:
-  static_volume:
-  media_volume:
+  redis_data:

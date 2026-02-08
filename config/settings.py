@@ -168,3 +168,26 @@ LOGGING = {
         'level': 'DEBUG',
     },
 }
+
+
+# Cache com Redis
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': f"redis://{os.getenv('REDIS_HOST', 'redis')}:{os.getenv('REDIS_PORT', '6379')}/1",
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'SOCKET_CONNECT_TIMEOUT': 5,
+            'SOCKET_TIMEOUT': 5,
+            'CONNECTION_POOL_KWARGS': {
+                'max_connections': 50,
+                'retry_on_timeout': True,
+            },
+            'REDIS_CLIENT_KWARGS': {
+                'health_check_interval': 30,
+            },
+        },
+        'KEY_PREFIX': 'eleveia',
+        'TIMEOUT': 3600,
+    }
+}
