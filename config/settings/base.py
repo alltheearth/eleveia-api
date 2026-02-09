@@ -42,6 +42,10 @@ LOCAL_APPS = [
     'apps.storage',
 ]
 
+CSRF_TRUSTED_ORIGINS = [
+    'https://eleveia-api-production-7ec2.up.railway.app'
+]
+
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 # ===================================================================
