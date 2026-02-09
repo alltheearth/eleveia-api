@@ -1,11 +1,10 @@
 """
 config/settings/base.py
-FIXED VERSION - Complete LOGGING configuration
+VERSÃO CORRIGIDA COM WHITENOISE
 """
 import os
 from pathlib import Path
 from decouple import config
-
 
 # Build paths
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -45,10 +44,13 @@ LOCAL_APPS = [
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
-# Middleware
+# ===================================================================
+# MIDDLEWARE - ORDEM CORRETA COM WHITENOISE
+# ===================================================================
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # ✅ Logo após SecurityMiddleware
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -108,10 +110,17 @@ TIME_ZONE = 'America/Sao_Paulo'
 USE_I18N = True
 USE_TZ = True
 
-# Static files (CSS, JavaScript, Images)
+# ===================================================================
+# STATIC FILES - CONFIGURAÇÃO COM WHITENOISE
+# ===================================================================
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = []
+
+# WhiteNoise Configuration
+WHITENOISE_USE_FINDERS = True
+WHITENOISE_AUTOREFRESH = True
+WHITENOISE_MAX_AGE = 31536000  # 1 ano de cache
 
 # Media files
 MEDIA_URL = '/media/'
@@ -157,7 +166,7 @@ CORS_ALLOWED_ORIGINS = config(
 CORS_ALLOW_CREDENTIALS = True
 
 # ===================================================================
-# LOGGING CONFIGURATION - FIXED
+# LOGGING CONFIGURATION
 # ===================================================================
 LOGGING = {
     'version': 1,
@@ -208,26 +217,13 @@ LOGGING = {
 LOGS_DIR = BASE_DIR / 'logs'
 LOGS_DIR.mkdir(exist_ok=True)
 
-# config/settings/base.py
-
-# ===================================================================
-# CLOUDFLARE R2 STORAGE CONFIGURATION
-# ===================================================================
-
+# Cloudflare R2 Storage
 R2_ACCOUNT_ID = config('R2_ACCOUNT_ID', default='')
 R2_ACCESS_KEY_ID = config('R2_ACCESS_KEY_ID', default='')
 R2_SECRET_ACCESS_KEY = config('R2_SECRET_ACCESS_KEY', default='')
 R2_BUCKET_PREFIX = config('R2_BUCKET_PREFIX', default='eleve-app')
-
-# R2 Endpoint (formato padrão)
 R2_ENDPOINT_URL = f'https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com'
 
-"""# Validação em produção
-if not DEBUG:
-    if not all([R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY]):
-        raise ValueError('R2 credentials must be set in production')
-"""
-# Storage Configuration
 STORAGE_MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
 STORAGE_ALLOWED_EXTENSIONS = [
     'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
@@ -235,31 +231,40 @@ STORAGE_ALLOWED_EXTENSIONS = [
     'txt', 'csv', 'zip', 'rar'
 ]
 
-# ===================================================================
-# REDIS & CACHE
-# ===================================================================
+REDIS_HOST = os.getenv('REDIS_HOST', 'redis')  # 'redis' no Docker, '127.0.0.1' local
+REDIS_PORT = os.getenv('REDIS_PORT', '6379')
+REDIS_DB_CACHE = os.getenv('REDIS_DB_CACHE', '1')
+REDIS_DB_CELERY = os.getenv('REDIS_DB_CELERY', '0')
 
 CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': 'redis://127.0.0.1:6379/1',
+        'LOCATION': f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB_CACHE}',
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'SOCKET_CONNECT_TIMEOUT': 5,
+            'SOCKET_TIMEOUT': 5,
+            'CONNECTION_POOL_KWARGS': {
+                'max_connections': 50,
+                'retry_on_timeout': True,
+            },
+            'REDIS_CLIENT_KWARGS': {
+                'health_check_interval': 30,
+            },
         },
         'KEY_PREFIX': 'eleveai',
-        'TIMEOUT': 900,  # 15 minutos
+        'TIMEOUT': 3600,  # 1 hora
     }
 }
 
 # ===================================================================
-# CELERY
+# CELERY - CONFIGURAÇÃO DINÂMICA PARA DOCKER
 # ===================================================================
-
-CELERY_BROKER_URL = 'redis://127.0.0.1:6379/0'
-CELERY_RESULT_BACKEND = 'redis://127.0.0.1:6379/0'
+CELERY_BROKER_URL = f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB_CELERY}'
+CELERY_RESULT_BACKEND = f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB_CELERY}'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'America/Sao_Paulo'
 CELERY_TASK_TRACK_STARTED = True
-CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutos max
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutos

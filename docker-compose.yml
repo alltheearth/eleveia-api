@@ -1,44 +1,36 @@
-# docker-compose.yml
-# EleveIA - Production-ready configuration
+version: '3.9'
 
 services:
-  # =========================================================================
-  # WEB - Django Application
-  # =========================================================================
   web:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: eleveia_web
-    command: /usr/local/bin/entrypoint.sh
     volumes:
       - .:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
     ports:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings
+      - PYTHONUNBUFFERED=1
+      # ✅ Sobrescreve variáveis do .env para Docker
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     depends_on:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
-    # 🎯 OFELIA JOBS - Configuração via Labels (Método Recomendado)
-    labels:
-      # Job 1: Sincronização de boletos a cada hora
-      ofelia.enabled: "true"
-      ofelia.job-exec.sync-invoice-stats.schedule: "@every 1h"
-      ofelia.job-exec.sync-invoice-stats.command: "python manage.py sync_invoice_stats"
-      ofelia.job-exec.sync-invoice-stats.no-overlap: "true"
-
-      # Job 2: Limpeza de sessões diariamente às 3h
-      ofelia.job-exec.cleanup-sessions.schedule: "0 3 * * *"
-      ofelia.job-exec.cleanup-sessions.command: "python manage.py clearsessions"
-      ofelia.job-exec.cleanup-sessions.no-overlap: "true"
-
-    networks:
-      - eleveia_network
-
-  # =========================================================================
-  # REDIS - Cache & Session Storage
-  # =========================================================================
   redis:
     image: redis:7-alpine
     container_name: eleveia_redis
@@ -50,43 +42,24 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+      start_period: 5s
     restart: unless-stopped
-    networks:
-      - eleveia_network
 
-  # =========================================================================
-  # SCHEDULER - Ofelia (Cron Jobs)
-  # =========================================================================
   scheduler:
     image: mcuadros/ofelia:latest
     container_name: eleveia_scheduler
     depends_on:
       web:
-        condition: service_started
+        condition: service_healthy
       redis:
         condition: service_healthy
     command: daemon --docker
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./ofelia-config.ini:/etc/ofelia/config.ini:ro
     restart: unless-stopped
-    networks:
-      - eleveia_network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
-# =========================================================================
-# VOLUMES
-# =========================================================================
 volumes:
   redis_data:
-    driver: local
-
-# =========================================================================
-# NETWORKS
-# =========================================================================
-networks:
-  eleveia_network:
-    driver: bridge
+  static_volume:
+  media_volume:
