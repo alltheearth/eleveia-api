@@ -7,12 +7,8 @@ echo "=========================================="
 
 # Verificar Gunicorn
 echo "🔍 Verificando Gunicorn..."
-if ! command -v gunicorn >/dev/null 2>&1; then
-    echo "❌ ERRO: Gunicorn não está instalado!"
-    exit 1
-fi
-GUNICORN_VERSION=$(gunicorn --version 2>&1 | head -n1)
-echo "✅ $GUNICORN_VERSION"
+gunicorn --version || { echo "❌ Gunicorn não instalado!"; exit 1; }
+echo "✅ Gunicorn OK"
 
 # Aguardar banco
 echo "⏳ Aguardando banco de dados..."
@@ -25,11 +21,8 @@ python manage.py migrate --noinput || {
     exit 1
 }
 
-# Collectstatic (SEM --clear, COM timeout)
-echo "📦 Coletando arquivos estáticos..."
-timeout 60 python manage.py collectstatic --noinput || {
-    echo "⚠️  Collectstatic demorou demais ou falhou. Continuando..."
-}
+# Pular collectstatic
+echo "⚠️  Pulando collectstatic (usando WhiteNoise)"
 
 echo "=========================================="
 echo "🚀 Iniciando Gunicorn (porta 8000)"
@@ -39,12 +32,14 @@ echo "📍 Admin: http://0.0.0.0:8000/admin/"
 echo "📍 Docs: http://0.0.0.0:8000/api/v1/docs/"
 echo "=========================================="
 
-# Iniciar Gunicorn
+# ✅ TIMEOUT AUMENTADO PARA 600 SEGUNDOS (10 minutos)
 exec gunicorn config.wsgi:application \
     --bind 0.0.0.0:8000 \
     --workers 3 \
     --worker-class sync \
-    --timeout 120 \
+    --timeout 600 \
+    --graceful-timeout 600 \
+    --keep-alive 5 \
     --max-requests 1000 \
     --max-requests-jitter 50 \
     --access-logfile - \
