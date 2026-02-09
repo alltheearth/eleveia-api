@@ -42,9 +42,7 @@ LOCAL_APPS = [
     'apps.storage',
 ]
 
-CSRF_TRUSTED_ORIGINS = [
-    'https://eleveia-api-production-7ec2.up.railway.app'
-]
+CSRF_TRUSTED_ORIGINS = [os.getenv('CSRF_TRUSTED_URL')]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
@@ -235,15 +233,23 @@ STORAGE_ALLOWED_EXTENSIONS = [
     'txt', 'csv', 'zip', 'rar'
 ]
 
-REDIS_HOST = os.getenv('REDIS_HOST', 'redis')  # 'redis' no Docker, '127.0.0.1' local
-REDIS_PORT = os.getenv('REDIS_PORT', '6379')
-REDIS_DB_CACHE = os.getenv('REDIS_DB_CACHE', '1')
-REDIS_DB_CELERY = os.getenv('REDIS_DB_CELERY', '0')
+# ===================================================================
+# REDIS & CACHE - DINÂMICO PARA DOCKER E RAILWAY
+# ===================================================================
+# 1. Tenta obter o URL completo do Railway.
+# 2. Se não existir, monta o URL usando as variáveis do Docker local.
+REDIS_URL = os.getenv('REDIS_URL')
+
+if not REDIS_URL:
+    REDIS_HOST = os.getenv('REDIS_HOST', '127.0.0.1')
+    REDIS_PORT = os.getenv('REDIS_PORT', '6379')
+    REDIS_DB_CACHE = os.getenv('REDIS_DB_CACHE', '1')
+    REDIS_URL = f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB_CACHE}'
 
 CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB_CACHE}',
+        'LOCATION': REDIS_URL,
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
             'SOCKET_CONNECT_TIMEOUT': 5,
@@ -257,18 +263,15 @@ CACHES = {
             },
         },
         'KEY_PREFIX': 'eleveai',
-        'TIMEOUT': 3600,  # 1 hora
+        'TIMEOUT': 3600,
     }
 }
 
 # ===================================================================
-# CELERY - CONFIGURAÇÃO DINÂMICA PARA DOCKER
+# CELERY
 # ===================================================================
-CELERY_BROKER_URL = f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB_CELERY}'
-CELERY_RESULT_BACKEND = f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB_CELERY}'
+# Para o Celery, usamos o mesmo REDIS_URL (ou podes definir REDIS_URL_CELERY no Railway)
+CELERY_BROKER_URL = os.getenv('REDIS_URL', REDIS_URL)
+CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', REDIS_URL)
 CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = 'America/Sao_Paulo'
-CELERY_TASK_TRACK_STARTED = True
-CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutos
+
