@@ -1,3 +1,4 @@
+# apps/contacts/views/guardian_views.py
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -5,8 +6,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 
-from apps.contacts.serializers.guardian_serializers import GuardianDetailSerializer
-from ..services.siga_integration_service import SigaIntegrationService
+from ..serializers import GuardianDetailSerializer
+from ..services import SigaIntegrationService, SigaIntegrationError
 
 import logging
 
@@ -61,8 +62,23 @@ class StudentsGuardiansView(APIView):
         Lista todos os responsáveis com seus filhos.
         """
         try:
+            # Validação de token da escola
+            if not hasattr(request.user, 'profile') or not request.user.profile.school:
+                return Response(
+                    {'error': 'Usuário sem escola vinculada'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            school = request.user.profile.school
+
+            if not school.application_token:
+                return Response(
+                    {'error': 'Escola sem token SIGA configurado'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
             # Buscar dados via service layer
-            service = SigaIntegrationService()
+            service = SigaIntegrationService(token=school.application_token)
             guardians_data = service.get_all_guardians_enriched()
 
             # Aplicar paginação
@@ -81,8 +97,17 @@ class StudentsGuardiansView(APIView):
             # Retornar resposta paginada
             return paginator.get_paginated_response(serializer.data)
 
+        except SigaIntegrationError as e:
+            logger.error(f"Erro de integração SIGA: {str(e)}", exc_info=True)
+            return Response(
+                {
+                    'error': 'Erro ao buscar dados dos responsáveis',
+                    'detail': str(e)
+                },
+                status=status.HTTP_502_BAD_GATEWAY
+            )
         except Exception as e:
-            logger.error(f"Erro ao buscar responsáveis: {str(e)}", exc_info=True)
+            logger.error(f"Erro inesperado: {str(e)}", exc_info=True)
             return Response(
                 {
                     'error': 'Erro ao buscar dados dos responsáveis',

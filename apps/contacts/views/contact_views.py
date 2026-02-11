@@ -3,12 +3,12 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from django.core.exceptions import ValidationError
 
 from ..models import Contato
 from ..serializers import ContatoSerializer, ContatoCreateSerializer
 from ..services import ContatoService
 from ..selectors import ContatoSelector
-from ..permissions import IsOwnerOrAdmin
 
 
 class ContatoViewSet(viewsets.ModelViewSet):
@@ -67,10 +67,16 @@ class ContatoViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         # Chama service
-        contato = ContatoService.atualizar_contato(
-            contato_id=kwargs['pk'],
-            data=serializer.validated_data
-        )
+        try:
+            contato = ContatoService.atualizar_contato(
+                contato_id=kwargs['pk'],
+                data=serializer.validated_data
+            )
+        except ValidationError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         output_serializer = ContatoSerializer(contato)
         return Response(output_serializer.data)
