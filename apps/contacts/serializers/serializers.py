@@ -2,7 +2,7 @@
 # apps/contacts/serializers.py
 # ===================================================================
 from rest_framework import serializers
-from .models import WhatsAppContact
+from apps.contacts.models import WhatsAppContact
 
 
 class WhatsAppContactSerializer(serializers.ModelSerializer):

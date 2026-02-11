@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 
-from ..serializers.guardian_serializers import GuardianDetailSerializer
+from apps.contacts.serializers.guardian_serializers import GuardianDetailSerializer
 from ..services.siga_integration_service import SigaIntegrationService
 
 import logging
@@ -20,7 +20,7 @@ class GuardianPagination(PageNumberPagination):
     max_page_size = 100
 
 
-class StudentGuardianView(APIView):
+class StudentsGuardiansView(APIView):
     """
     API para listar responsáveis (guardians) com seus filhos matriculados.
 
