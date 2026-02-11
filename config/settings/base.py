@@ -42,7 +42,12 @@ LOCAL_APPS = [
     'apps.storage',
 ]
 
-CSRF_TRUSTED_ORIGINS = [os.getenv('CSRF_TRUSTED_URL')]
+# CSRF Configuration - filtra valores None
+CSRF_TRUSTED_ORIGINS = [
+    origin for origin in [
+        os.getenv('CSRF_TRUSTED_URL'),
+    ] if origin  # Remove None e strings vazias
+]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
@@ -165,6 +170,7 @@ CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
     default='http://localhost:5173,http://localhost:3000'
 ).split(',')
+
 CORS_ALLOW_CREDENTIALS = True
 
 # ===================================================================
@@ -274,4 +280,3 @@ CACHES = {
 CELERY_BROKER_URL = os.getenv('REDIS_URL', REDIS_URL)
 CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', REDIS_URL)
 CELERY_ACCEPT_CONTENT = ['json']
-

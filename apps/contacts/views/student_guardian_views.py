@@ -1,261 +1,164 @@
+# apps/contacts/views/student_guardian_views.py
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
-import requests
+import logging
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.core.cache import cache
-from django.utils import timezone
-from core.permissions import IsSchoolStaff
-from collections import defaultdict
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
+import requests
 
+from core.permissions import IsSchoolStaff
+from ..services.siga_integration_service import SigaIntegrationService
+from ..services.guardian_aggregator_service import GuardianAggregatorService
+from ..serializers.guardian_serializers import GuardianDetailSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class StudentGuardianView(APIView):
-    """Busca e classifica responsáveis com seus alunos do SIGA"""
+    """
+    Busca e classifica responsáveis com seus alunos do SIGA.
+
+    Combina dados de 3 APIs:
+    - /lista_responsaveis_dados_sensiveis/ (dados pessoais)
+    - /lista_alunos_dados_sensiveis/ (vínculos familiares)
+    - /acesso/alunos/ (dados acadêmicos)
+
+    Suporta filtro por nome: ?search=Maria
+    Cache: 30 minutos
+    """
     permission_classes = [IsSchoolStaff]
 
     def get(self, request):
-        # ✅ Validação de segurança
+        """
+        GET /api/v1/contacts/students/guardians/
+
+        Query params:
+            - search (opcional): Filtra por nome do responsável ou filho
+
+        Returns:
+            200: Lista de responsáveis com filhos
+            403: Usuário sem permissão
+            500: Erro na integração com SIGA
+            504: Timeout na comunicação com SIGA
+        """
+        # ✅ Validações de segurança
         if not hasattr(request.user, 'profile'):
-            return Response({"error": "Usuário sem perfil"}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {"error": "Usuário sem perfil"},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
         if not request.user.profile.school:
-            return Response({"error": "Usuário sem escola vinculada"}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {"error": "Usuário sem escola vinculada"},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
         school = request.user.profile.school
 
         if not school.application_token:
-            return Response({"error": "Escola sem token configurado"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(
+                {"error": "Escola sem token configurado"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
         token = school.application_token
+        search_query = request.query_params.get('search', '').strip()
+
+        # Cache key (diferente por escola e search)
+        cache_key = f"guardians:school:{school.id}"
+        if search_query:
+            cache_key += f":search:{search_query}"
+
+        # Tentar buscar do cache
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            logger.info(f"Cache hit for {cache_key}")
+            return Response(cached_data, status=status.HTTP_200_OK)
 
         try:
-            # 🔍 BUSCAR TODOS OS RESPONSÁVEIS
-            guardians = self._fetch_all_paginated(
-                "https://siga.activesoft.com.br/api/v0/lista_responsaveis_dados_sensiveis/",
-                token
+            # Buscar dados do SIGA
+            logger.info(f"Fetching data from SIGA for school {school.id}")
+
+            siga_service = SigaIntegrationService(token)
+            all_data = siga_service.fetch_all_data()
+
+            # Agregar e enriquecer dados
+            aggregator = GuardianAggregatorService()
+            guardians_enriched = aggregator.build_guardians_response(
+                guardians=all_data['guardians'],
+                students_relations=all_data['students_relations'],
+                students_academic=all_data['students_academic']
             )
 
-            # 🔍 BUSCAR TODOS OS ALUNOS
-            students = self._fetch_all_paginated(
-                "https://siga.activesoft.com.br/api/v0/lista_alunos_dados_sensiveis/",
-                token
-            )
+            # Aplicar filtro de busca, se fornecido
+            if search_query:
+                guardians_enriched = self._filter_by_search(guardians_enriched, search_query)
 
-            # 📊 PROCESSAR E RELACIONAR DADOS
-            result = self._process_guardians_and_students(guardians, students)
+            # Serializar
+            serializer = GuardianDetailSerializer(guardians_enriched, many=True)
+
+            # Preparar resposta
+            result = {
+                'total_guardians': len(guardians_enriched),
+                'guardians': serializer.data
+            }
+
+            # Cachear por 30 minutos
+            cache.set(cache_key, result, timeout=1800)
+            logger.info(f"Cached data for {cache_key}")
 
             return Response(result, status=status.HTTP_200_OK)
 
         except requests.exceptions.Timeout:
-            return Response({"error": "O SIGA demorou muito para responder."}, status=504)
+            logger.error("Timeout communicating with SIGA")
+            return Response(
+                {"error": "O SIGA demorou muito para responder. Tente novamente."},
+                status=status.HTTP_504_GATEWAY_TIMEOUT
+            )
+
         except requests.exceptions.RequestException as e:
-            return Response({"error": f"Falha na comunicação com o SIGA: {str(e)}"}, status=502)
+            logger.error(f"Error communicating with SIGA: {str(e)}")
+            return Response(
+                {"error": f"Falha na comunicação com o SIGA: {str(e)}"},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
 
-    def _fetch_all_paginated(self, url, token):
-        """Busca todos os resultados paginados de uma API"""
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
-        }
+        except Exception as e:
+            logger.exception(f"Unexpected error processing guardians: {str(e)}")
+            return Response(
+                {"error": "Erro interno ao processar dados"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
-        all_results = []
-        next_url = url
+    def _filter_by_search(self, guardians: list, search_query: str) -> list:
+        """
+        Filtra responsáveis por nome (responsável OU filho).
 
-        while next_url:
-            response = requests.get(next_url, headers=headers, timeout=30)
-            response.raise_for_status()
-            data = response.json()
+        Args:
+            guardians: Lista de responsáveis
+            search_query: Termo de busca
 
-            if isinstance(data, list):
-                all_results.extend(data)
-                break
-            elif isinstance(data, dict):
-                all_results.extend(data.get('results', []))
-                next_url = data.get('next')
-            else:
-                break
-
-        return all_results
-
-    def _process_guardians_and_students(self, guardians, students):
-        """Processa e relaciona responsáveis com alunos"""
-
-        # Criar índice de responsáveis por ID
-        guardians_dict = {g['id']: g for g in guardians}
-
-        # Dicionário para agrupar alunos por responsável
-        guardian_students_map = defaultdict(lambda: {
-            'as_mother': [],
-            'as_father': [],
-            'as_primary_guardian': [],
-            'as_secondary_guardian': [],
-            'as_financial_responsible': []
-        })
-
-        # Processar cada aluno e mapear seus responsáveis
-        for student in students:
-            student_info = {
-                'id': student.get('id'),
-                'matricula': student.get('matricula'),
-                'nome': student.get('nome'),
-                'cpf': student.get('cpf'),
-                'data_nascimento': student.get('data_nascimento'),
-                'celular': student.get('celular'),
-                'email': student.get('email')
-            }
-
-            # Mãe
-            if student.get('mae_id'):
-                guardian_students_map[student['mae_id']]['as_mother'].append(student_info)
-
-            # Pai
-            if student.get('pai_id'):
-                guardian_students_map[student['pai_id']]['as_father'].append(student_info)
-
-            # Responsável principal
-            if student.get('responsavel_id'):
-                guardian_students_map[student['responsavel_id']]['as_primary_guardian'].append(student_info)
-
-            # Responsável secundário
-            if student.get('responsavel_secundario_id'):
-                guardian_students_map[student['responsavel_secundario_id']]['as_secondary_guardian'].append(
-                    student_info)
-
-            # Responsável financeiro
-            if student.get('responsavel_id'):
-                guardian_students_map[student['responsavel_id']]['as_financial_responsible'].append(student_info)
-
-        # Construir resultado final
-        result = {
-            'total_guardians': len(guardians),
-            'total_students': len(students),
-            'guardians_with_missing_data': {
-                'missing_cpf': [],
-                'missing_email': [],
-                'missing_phone': [],
-                'missing_multiple': []
-            },
-            'guardians': []
-        }
+        Returns:
+            Lista filtrada
+        """
+        search_lower = search_query.lower()
+        filtered = []
 
         for guardian in guardians:
-            guardian_id = guardian['id']
+            # Buscar no nome do responsável
+            if search_lower in guardian.get('nome', '').lower():
+                filtered.append(guardian)
+                continue
 
-            # Verificar dados faltantes
-            missing_fields = []
-            if not guardian.get('cpf_cnpj'):
-                missing_fields.append('cpf_cnpj')
-            if not guardian.get('email'):
-                missing_fields.append('email')
-            if not guardian.get('celular'):
-                missing_fields.append('celular')
+            # Buscar no nome dos filhos
+            for child in guardian.get('filhos', []):
+                if search_lower in child.get('nome', '').lower():
+                    filtered.append(guardian)
+                    break
 
-            # Formatar telefone
-            phone = self._format_phone(guardian.get('celular'))
+        return filtered
 
-            # Obter relacionamentos
-            relationships = guardian_students_map.get(guardian_id, {
-                'as_mother': [],
-                'as_father': [],
-                'as_primary_guardian': [],
-                'as_secondary_guardian': [],
-                'as_financial_responsible': []
-            })
-
-            # Determinar tipos de relacionamento
-            relationship_types = []
-            if relationships['as_mother']:
-                relationship_types.append('mãe')
-            if relationships['as_father']:
-                relationship_types.append('pai')
-            if relationships['as_primary_guardian']:
-                relationship_types.append('responsável_principal')
-            if relationships['as_secondary_guardian']:
-                relationship_types.append('responsável_secundário')
-            if relationships['as_financial_responsible']:
-                relationship_types.append('responsável_financeiro')
-
-            # Contar total de alunos (sem duplicação)
-            all_student_ids = set()
-            for rel_type in relationships.values():
-                all_student_ids.update([s['id'] for s in rel_type])
-
-            guardian_data = {
-                'id': guardian_id,
-                'nome': guardian.get('nome'),
-                'cpf_cnpj': guardian.get('cpf_cnpj'),
-                'email': guardian.get('email'),
-                'celular': guardian.get('celular'),
-                'celular_formatado': phone,
-                'sexo': guardian.get('sexo'),
-                'data_nascimento': guardian.get('data_nascimento'),
-                'endereco':
-                    {'logradouro': guardian.get('logradouro'),
-                'bairro': guardian.get('bairro'),
-                'cidade': guardian.get('cidade'),
-                'uf': guardian.get('uf'),
-                'cep': guardian.get('cep')},
-                'profissao_nome': guardian.get('profissao_nome'),
-                'missing_data': missing_fields,
-                'has_missing_data': len(missing_fields) > 0,
-                'relationship_types': relationship_types,
-                'total_students': len(all_student_ids),
-                'students': {
-                    'as_mother': relationships['as_mother'],
-                    'as_father': relationships['as_father'],
-                    'as_primary_guardian': relationships['as_primary_guardian'],
-                    'as_secondary_guardian': relationships['as_secondary_guardian'],
-                    'as_financial_responsible': relationships['as_financial_responsible']
-                }
-            }
-
-            result['guardians'].append(guardian_data)
-
-            # Adicionar aos grupos de dados faltantes
-            if missing_fields:
-                if 'cpf_cnpj' in missing_fields:
-                    result['guardians_with_missing_data']['missing_cpf'].append(guardian_data['nome'])
-                if 'email' in missing_fields:
-                    result['guardians_with_missing_data']['missing_email'].append(guardian_data['nome'])
-                if 'celular' in missing_fields:
-                    result['guardians_with_missing_data']['missing_phone'].append(guardian_data['nome'])
-                if len(missing_fields) > 1:
-                    result['guardians_with_missing_data']['missing_multiple'].append({
-                        'nome': guardian_data['nome'],
-                        'missing': missing_fields
-                    })
-
-        # Estatísticas adicionais
-        result['statistics'] = {
-            'total_with_missing_data': len([g for g in result['guardians'] if g['has_missing_data']]),
-            'total_missing_cpf': len(result['guardians_with_missing_data']['missing_cpf']),
-            'total_missing_email': len(result['guardians_with_missing_data']['missing_email']),
-            'total_missing_phone': len(result['guardians_with_missing_data']['missing_phone']),
-            'total_missing_multiple': len(result['guardians_with_missing_data']['missing_multiple']),
-            'guardians_as_mother': len([g for g in result['guardians'] if 'mãe' in g['relationship_types']]),
-            'guardians_as_father': len([g for g in result['guardians'] if 'pai' in g['relationship_types']]),
-            'guardians_as_primary': len(
-                [g for g in result['guardians'] if 'responsável_principal' in g['relationship_types']]),
-            'guardians_as_secondary': len(
-                [g for g in result['guardians'] if 'responsável_secundário' in g['relationship_types']]),
-        }
-
-        return result
-
-    def _format_phone(self, phone):
-        """Formata telefone para o padrão 55DDXXXXXXXXX"""
-        if not phone:
-            return None
-
-        numero = ''.join(filter(str.isdigit, phone))
-
-        if not numero:
-            return None
-
-        if numero.startswith('55'):
-            numero = numero[2:]
-
-        return f"55{numero}"

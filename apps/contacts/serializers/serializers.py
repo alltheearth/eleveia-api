@@ -2,7 +2,7 @@
 # apps/contacts/serializers.py
 # ===================================================================
 from rest_framework import serializers
-from apps.contacts.models import WhatsAppContact
+# from apps.contacts.models import WhatsAppContact
 
 
 class WhatsAppContactSerializer(serializers.ModelSerializer):
@@ -12,7 +12,7 @@ class WhatsAppContactSerializer(serializers.ModelSerializer):
     source_display = serializers.CharField(source='get_source_display', read_only=True)
 
     class Meta:
-        model = WhatsAppContact
+
         fields = [
             'id',
             'school',

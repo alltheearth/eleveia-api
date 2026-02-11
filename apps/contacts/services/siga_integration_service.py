@@ -1,208 +1,184 @@
 # apps/contacts/services/siga_integration_service.py
+
 import requests
-from typing import Dict, Any, List, Optional
-from django.conf import settings
-from django.core.cache import cache
 import logging
+from typing import List, Dict, Optional
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
 
 
+# ⭐ EXCEÇÃO CUSTOMIZADA
+class SigaIntegrationError(Exception):
+    """
+    Exceção customizada para erros de integração com SIGA.
+    """
+    pass
+
+
 class SigaIntegrationService:
     """
-    Service para integração com sistema SIGA.
-    REGRA: Isolado, testável, com tratamento de erros.
+    Serviço de integração com APIs do SIGA.
+    Responsável por buscar dados brutos das 3 APIs necessárias.
     """
 
-    BASE_URL = getattr(settings, 'SIGA_API_URL', 'https://siga.activesoft.com.br/api/v0')
-    TIMEOUT = 10  # segundos
-    CACHE_TTL = 300  # 5 minutos
+    BASE_URL = "https://siga.activesoft.com.br/api/v0"
+    TIMEOUT = 30  # segundos
 
-    def __init__(self, token: Optional[str] = None):
+    def __init__(self, token: str):
         """
-        Inicializa o service com token de autenticação.
-
         Args:
-            token: Token de autenticação (opcional, pode vir de settings)
+            token: Application token da escola
         """
-        self.token = token or getattr(settings, 'SIGA_API_TOKEN', None)
+        self.token = token
+        self.session = self._create_session()
 
-    def get_all_guardians_enriched(self) -> List[Dict[str, Any]]:
+    def _create_session(self) -> requests.Session:
         """
-        Busca todos os responsáveis com dados enriquecidos.
+        Cria session com retry automático para resiliência.
+        """
+        session = requests.Session()
+
+        # Retry: 3 tentativas, backoff exponencial
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=1,  # 1s, 2s, 4s
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["GET"]
+        )
+
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+
+        return session
+
+    def _get_headers(self) -> Dict[str, str]:
+        """
+        Retorna headers padrão para requisições.
+        """
+        return {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/json"
+        }
+
+    def fetch_all_guardians(self) -> List[Dict]:
+        """
+        Busca todos os responsáveis.
 
         Returns:
-            Lista de responsáveis com informações completas
+            Lista de dicionários com dados dos responsáveis
 
         Raises:
-            SigaIntegrationError: Se erro na integração
+            requests.exceptions.RequestException: Em caso de erro na API
         """
-        try:
-            # Buscar responsáveis
-            guardians = self._fetch_all_paginated(
-                f'{self.BASE_URL}/lista_responsaveis_dados_sensiveis/'
-            )
-
-            # Buscar alunos
-            students = self._fetch_all_paginated(
-                f'{self.BASE_URL}/lista_alunos_dados_sensiveis/'
-            )
-
-            # Enriquecer dados
-            return self._enrich_guardians_with_students(guardians, students)
-
-        except requests.RequestException as e:
-            logger.error(f'Erro ao buscar responsáveis do SIGA: {str(e)}')
-            raise SigaIntegrationError(f'Erro ao buscar responsáveis: {str(e)}')
-
-    def buscar_alunos_por_responsavel(self, cpf_responsavel: str) -> List[Dict[str, Any]]:
-        """
-        Busca alunos no SIGA pelo CPF do responsável.
-
-        Args:
-            cpf_responsavel: CPF do responsável
-
-        Returns:
-            Lista de alunos
-
-        Raises:
-            SigaIntegrationError: Se erro na integração
-        """
-        # Verifica cache
-        cache_key = f'siga_alunos_{cpf_responsavel}'
-        cached_data = cache.get(cache_key)
-        if cached_data:
-            return cached_data
+        url = f"{self.BASE_URL}/lista_responsaveis_dados_sensiveis/"
 
         try:
-            response = requests.get(
-                f'{self.BASE_URL}/responsaveis/{cpf_responsavel}/alunos',
+            logger.info(f"Fetching guardians from {url}")
+            response = self.session.get(
+                url,
                 headers=self._get_headers(),
                 timeout=self.TIMEOUT
             )
             response.raise_for_status()
 
             data = response.json()
-
-            # Salva no cache
-            cache.set(cache_key, data, self.CACHE_TTL)
-
+            logger.info(f"Fetched {len(data)} guardians")
             return data
 
-        except requests.RequestException as e:
-            logger.error(f'Erro ao buscar alunos: {str(e)}')
-            raise SigaIntegrationError(f'Erro ao buscar alunos: {str(e)}')
+        except requests.exceptions.Timeout:
+            logger.error(f"Timeout fetching guardians from {url}")
+            raise
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error fetching guardians: {str(e)}")
+            raise
 
-    def _fetch_all_paginated(self, url: str) -> List[Dict[str, Any]]:
+    def fetch_students_relations(self) -> List[Dict]:
         """
-        Busca todos os resultados paginados de uma URL.
-
-        Args:
-            url: URL da API
+        Busca alunos com vínculos familiares (mae_id, pai_id, etc).
 
         Returns:
-            Lista com todos os resultados
-        """
-        headers = self._get_headers()
-        all_results = []
-        next_url = url
+            Lista de dicionários com dados dos alunos e vínculos
 
-        while next_url:
-            response = requests.get(next_url, headers=headers, timeout=30)
+        Raises:
+            requests.exceptions.RequestException: Em caso de erro na API
+        """
+        url = f"{self.BASE_URL}/lista_alunos_dados_sensiveis/"
+
+        try:
+            logger.info(f"Fetching students relations from {url}")
+            response = self.session.get(
+                url,
+                headers=self._get_headers(),
+                timeout=self.TIMEOUT
+            )
             response.raise_for_status()
+
             data = response.json()
+            logger.info(f"Fetched {len(data)} students (relations)")
+            return data
 
-            if isinstance(data, list):
-                all_results.extend(data)
-                break
-            elif isinstance(data, dict):
-                all_results.extend(data.get('results', []))
-                next_url = data.get('next')
-            else:
-                break
+        except requests.exceptions.Timeout:
+            logger.error(f"Timeout fetching students relations from {url}")
+            raise
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error fetching students relations: {str(e)}")
+            raise
 
-        return all_results
-
-    def _enrich_guardians_with_students(
-            self,
-            guardians: List[Dict],
-            students: List[Dict]
-    ) -> List[Dict[str, Any]]:
+    def fetch_students_academic(self) -> List[Dict]:
         """
-        Enriquece dados dos responsáveis com informações dos alunos.
-
-        Args:
-            guardians: Lista de responsáveis
-            students: Lista de alunos
+        Busca dados acadêmicos dos alunos (turma, série, status).
 
         Returns:
-            Lista de responsáveis enriquecidos
+            Lista de dicionários com dados acadêmicos
+
+        Raises:
+            requests.exceptions.RequestException: Em caso de erro na API
         """
-        from collections import defaultdict
+        url = f"{self.BASE_URL}/acesso/alunos/"
 
-        # Mapear alunos por responsável
-        guardian_students_map = defaultdict(list)
+        try:
+            logger.info(f"Fetching students academic data from {url}")
+            response = self.session.get(
+                url,
+                headers=self._get_headers(),
+                timeout=self.TIMEOUT
+            )
+            response.raise_for_status()
 
-        for student in students:
-            # Adicionar aluno aos responsáveis
-            for key in ['mae_id', 'pai_id', 'responsavel_id', 'responsavel_secundario_id']:
-                guardian_id = student.get(key)
-                if guardian_id:
-                    guardian_students_map[guardian_id].append({
-                        'id': student.get('id'),
-                        'nome': student.get('nome'),
-                        'matricula': student.get('matricula'),
-                        'turma': student.get('turma'),
-                        'serie': student.get('serie'),
-                        'periodo': student.get('periodo'),
-                        'status': 'ativo' if student.get('ativo') else 'inativo'
-                    })
+            data = response.json()
+            logger.info(f"Fetched {len(data)} students (academic)")
+            return data
 
-        # Enriquecer responsáveis
-        enriched = []
-        for guardian in guardians:
-            guardian_id = guardian.get('id')
+        except requests.exceptions.Timeout:
+            logger.error(f"Timeout fetching students academic from {url}")
+            raise
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error fetching students academic: {str(e)}")
+            raise
 
-            enriched_guardian = {
-                'id': guardian_id,
-                'nome': guardian.get('nome'),
-                'cpf': guardian.get('cpf_cnpj'),
-                'email': guardian.get('email'),
-                'telefone': guardian.get('celular'),
-                'telefone_secundario': guardian.get('fone'),
-                'whatsapp': guardian.get('celular'),
-                'endereco': {
-                    'cep': guardian.get('cep'),
-                    'logradouro': guardian.get('logradouro'),
-                    'numero': guardian.get('numero_residencia'),
-                    'complemento': guardian.get('complemento'),
-                    'bairro': guardian.get('bairro'),
-                    'cidade': guardian.get('cidade'),
-                    'estado': guardian.get('uf'),
-                },
-                'parentesco': guardian.get('parentesco', 'responsavel'),
-                'parentesco_display': guardian.get('parentesco_display', 'Responsável'),
-                'responsavel_financeiro': guardian.get('responsavel_financeiro', False),
-                'responsavel_pedagogico': guardian.get('responsavel_pedagogico', False),
-                'filhos': guardian_students_map.get(guardian_id, []),
-                'documentos': []  # Pode ser implementado depois
+    def fetch_all_data(self) -> Dict[str, List[Dict]]:
+        """
+        Busca todos os dados necessários das 3 APIs.
+
+        Returns:
+            Dict com chaves: guardians, students_relations, students_academic
+
+        Raises:
+            requests.exceptions.RequestException: Em caso de erro em qualquer API
+        """
+        try:
+            guardians = self.fetch_all_guardians()
+            students_relations = self.fetch_students_relations()
+            students_academic = self.fetch_students_academic()
+
+            return {
+                'guardians': guardians,
+                'students_relations': students_relations,
+                'students_academic': students_academic
             }
 
-            enriched.append(enriched_guardian)
-
-        return enriched
-
-    def _get_headers(self) -> Dict[str, str]:
-        """Headers para autenticação na API SIGA."""
-        if not self.token:
-            raise SigaIntegrationError('Token de autenticação não configurado')
-
-        return {
-            'Authorization': f'Bearer {self.token}',
-            'Content-Type': 'application/json'
-        }
-
-
-class SigaIntegrationError(Exception):
-    """Exceção customizada para erros de integração."""
-    pass
+        except requests.exceptions.RequestException:
+            raise
