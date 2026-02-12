@@ -7493,3 +7493,288 @@ Traceback (most recent call last):
     raise ConnectionError(self._error_message(e))
 redis.exceptions.ConnectionError: Error 10061 connecting to 127.0.0.1:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.
 ERROR 2026-02-11 16:18:11,163 basehttp 16312 3608 "GET /api/v1/contacts/guardians/ HTTP/1.1" 500 166088
+ERROR 2026-02-12 16:32:25,885 guardian_viewset 1488 2460 Error listing guardians: Error 10061 connecting to 127.0.0.1:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.
+Traceback (most recent call last):
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\cache.py", line 29, in _decorator
+    return method(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\cache.py", line 99, in _get
+    return self.client.get(key, default=default, version=version, client=client)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\client\default.py", line 300, in get
+    raise ConnectionInterrupted(connection=client) from e
+django_redis.exceptions.ConnectionInterrupted: Redis ConnectionError: Error 10061 connecting to 127.0.0.1:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\lcpir\OneDrive\Documentos\projetos\eleveia-api\apps\contacts\views\guardian_viewset.py", line 133, in list
+    guardians = GuardianService.get_guardians_list(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\OneDrive\Documentos\projetos\eleveia-api\apps\contacts\services\guardian_service.py", line 55, in get_guardians_list
+    all_data = SigaCacheManager.get_or_fetch_all_siga_data(school_id, token)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\OneDrive\Documentos\projetos\eleveia-api\apps\contacts\integrations\siga_cache_manager.py", line 170, in get_or_fetch_all_siga_data
+    'guardians': cls.get_or_fetch_guardians(school_id, token),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\OneDrive\Documentos\projetos\eleveia-api\apps\contacts\integrations\siga_cache_manager.py", line 71, in get_or_fetch_guardians
+    cached = cache.get(cache_key)
+             ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\cache.py", line 92, in get
+    value = self._get(key, default, version, client)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\cache.py", line 36, in _decorator
+    raise e.__cause__  # noqa: B904
+    ^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\client\default.py", line 298, in get
+    value = client.get(key)
+            ^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\commands\core.py", line 1923, in get
+    return self.execute_command("GET", name, keys=[name])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\client.py", line 657, in execute_command
+    return self._execute_command(*args, **options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\client.py", line 663, in _execute_command
+    conn = self.connection or pool.get_connection()
+                              ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\utils.py", line 196, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\connection.py", line 2603, in get_connection
+    connection.connect()
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\connection.py", line 846, in connect
+    self.connect_check_health(check_health=True)
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\connection.py", line 863, in connect_check_health
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error 10061 connecting to 127.0.0.1:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.
+ERROR 2026-02-12 16:32:26,063 log 1488 2460 Internal Server Error: /api/v1/contacts/guardians/
+ERROR 2026-02-12 16:32:26,065 basehttp 1488 2460 "GET /api/v1/contacts/guardians/ HTTP/1.1" 500 11119
+ERROR 2026-02-12 16:32:45,050 guardian_viewset 1488 13092 Error listing guardians: Error 10061 connecting to 127.0.0.1:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.
+Traceback (most recent call last):
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\cache.py", line 29, in _decorator
+    return method(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\cache.py", line 99, in _get
+    return self.client.get(key, default=default, version=version, client=client)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\client\default.py", line 300, in get
+    raise ConnectionInterrupted(connection=client) from e
+django_redis.exceptions.ConnectionInterrupted: Redis ConnectionError: Error 10061 connecting to 127.0.0.1:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\lcpir\OneDrive\Documentos\projetos\eleveia-api\apps\contacts\views\guardian_viewset.py", line 133, in list
+    guardians = GuardianService.get_guardians_list(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\OneDrive\Documentos\projetos\eleveia-api\apps\contacts\services\guardian_service.py", line 55, in get_guardians_list
+    all_data = SigaCacheManager.get_or_fetch_all_siga_data(school_id, token)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\OneDrive\Documentos\projetos\eleveia-api\apps\contacts\integrations\siga_cache_manager.py", line 170, in get_or_fetch_all_siga_data
+    'guardians': cls.get_or_fetch_guardians(school_id, token),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\OneDrive\Documentos\projetos\eleveia-api\apps\contacts\integrations\siga_cache_manager.py", line 71, in get_or_fetch_guardians
+    cached = cache.get(cache_key)
+             ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\cache.py", line 92, in get
+    value = self._get(key, default, version, client)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\cache.py", line 36, in _decorator
+    raise e.__cause__  # noqa: B904
+    ^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\client\default.py", line 298, in get
+    value = client.get(key)
+            ^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\commands\core.py", line 1923, in get
+    return self.execute_command("GET", name, keys=[name])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\client.py", line 657, in execute_command
+    return self._execute_command(*args, **options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\client.py", line 663, in _execute_command
+    conn = self.connection or pool.get_connection()
+                              ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\utils.py", line 196, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\connection.py", line 2603, in get_connection
+    connection.connect()
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\connection.py", line 846, in connect
+    self.connect_check_health(check_health=True)
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\connection.py", line 863, in connect_check_health
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error 10061 connecting to 127.0.0.1:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.
+ERROR 2026-02-12 16:32:45,060 log 1488 13092 Internal Server Error: /api/v1/contacts/guardians/
+ERROR 2026-02-12 16:32:45,061 basehttp 1488 13092 "GET /api/v1/contacts/guardians/ HTTP/1.1" 500 11119
+ERROR 2026-02-12 16:32:49,563 guardian_viewset 1488 13092 Error listing guardians: Error 10061 connecting to 127.0.0.1:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.
+Traceback (most recent call last):
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\cache.py", line 29, in _decorator
+    return method(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\cache.py", line 99, in _get
+    return self.client.get(key, default=default, version=version, client=client)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\client\default.py", line 300, in get
+    raise ConnectionInterrupted(connection=client) from e
+django_redis.exceptions.ConnectionInterrupted: Redis ConnectionError: Error 10061 connecting to 127.0.0.1:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\lcpir\OneDrive\Documentos\projetos\eleveia-api\apps\contacts\views\guardian_viewset.py", line 133, in list
+    guardians = GuardianService.get_guardians_list(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\OneDrive\Documentos\projetos\eleveia-api\apps\contacts\services\guardian_service.py", line 55, in get_guardians_list
+    all_data = SigaCacheManager.get_or_fetch_all_siga_data(school_id, token)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\OneDrive\Documentos\projetos\eleveia-api\apps\contacts\integrations\siga_cache_manager.py", line 170, in get_or_fetch_all_siga_data
+    'guardians': cls.get_or_fetch_guardians(school_id, token),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\OneDrive\Documentos\projetos\eleveia-api\apps\contacts\integrations\siga_cache_manager.py", line 71, in get_or_fetch_guardians
+    cached = cache.get(cache_key)
+             ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\cache.py", line 92, in get
+    value = self._get(key, default, version, client)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\cache.py", line 36, in _decorator
+    raise e.__cause__  # noqa: B904
+    ^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\client\default.py", line 298, in get
+    value = client.get(key)
+            ^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\commands\core.py", line 1923, in get
+    return self.execute_command("GET", name, keys=[name])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\client.py", line 657, in execute_command
+    return self._execute_command(*args, **options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\client.py", line 663, in _execute_command
+    conn = self.connection or pool.get_connection()
+                              ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\utils.py", line 196, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\connection.py", line 2603, in get_connection
+    connection.connect()
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\connection.py", line 846, in connect
+    self.connect_check_health(check_health=True)
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\connection.py", line 863, in connect_check_health
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error 10061 connecting to 127.0.0.1:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.
+ERROR 2026-02-12 16:32:49,572 log 1488 13092 Internal Server Error: /api/v1/contacts/guardians/
+ERROR 2026-02-12 16:32:49,573 basehttp 1488 13092 "GET /api/v1/contacts/guardians/ HTTP/1.1" 500 11119
+ERROR 2026-02-12 16:35:12,767 guardian_viewset 15832 10036 Error listing guardians: Error 10061 connecting to 127.0.0.1:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.
+Traceback (most recent call last):
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\cache.py", line 29, in _decorator
+    return method(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\cache.py", line 99, in _get
+    return self.client.get(key, default=default, version=version, client=client)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\client\default.py", line 300, in get
+    raise ConnectionInterrupted(connection=client) from e
+django_redis.exceptions.ConnectionInterrupted: Redis ConnectionError: Error 10061 connecting to 127.0.0.1:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\lcpir\OneDrive\Documentos\projetos\eleveia-api\apps\contacts\views\guardian_viewset.py", line 133, in list
+    guardians = GuardianService.get_guardians_list(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\OneDrive\Documentos\projetos\eleveia-api\apps\contacts\services\guardian_service.py", line 55, in get_guardians_list
+    all_data = SigaCacheManager.get_or_fetch_all_siga_data(school_id, token)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\OneDrive\Documentos\projetos\eleveia-api\apps\contacts\integrations\siga_cache_manager.py", line 170, in get_or_fetch_all_siga_data
+    'guardians': cls.get_or_fetch_guardians(school_id, token),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\OneDrive\Documentos\projetos\eleveia-api\apps\contacts\integrations\siga_cache_manager.py", line 71, in get_or_fetch_guardians
+    cached = cache.get(cache_key)
+             ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\cache.py", line 92, in get
+    value = self._get(key, default, version, client)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\cache.py", line 36, in _decorator
+    raise e.__cause__  # noqa: B904
+    ^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\client\default.py", line 298, in get
+    value = client.get(key)
+            ^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\commands\core.py", line 1923, in get
+    return self.execute_command("GET", name, keys=[name])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\client.py", line 657, in execute_command
+    return self._execute_command(*args, **options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\client.py", line 663, in _execute_command
+    conn = self.connection or pool.get_connection()
+                              ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\utils.py", line 196, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\connection.py", line 2603, in get_connection
+    connection.connect()
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\connection.py", line 846, in connect
+    self.connect_check_health(check_health=True)
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\connection.py", line 863, in connect_check_health
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error 10061 connecting to 127.0.0.1:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.
+ERROR 2026-02-12 16:35:13,541 log 15832 10036 Internal Server Error: /api/v1/contacts/guardians/
+ERROR 2026-02-12 16:35:13,552 basehttp 15832 10036 "GET /api/v1/contacts/guardians/ HTTP/1.1" 500 11119
+ERROR 2026-02-12 16:37:37,310 guardian_viewset 14824 5040 Error listing guardians: Error 10061 connecting to 127.0.0.1:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.
+Traceback (most recent call last):
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\cache.py", line 29, in _decorator
+    return method(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\cache.py", line 99, in _get
+    return self.client.get(key, default=default, version=version, client=client)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\client\default.py", line 300, in get
+    raise ConnectionInterrupted(connection=client) from e
+django_redis.exceptions.ConnectionInterrupted: Redis ConnectionError: Error 10061 connecting to 127.0.0.1:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\lcpir\OneDrive\Documentos\projetos\eleveia-api\apps\contacts\views\guardian_viewset.py", line 133, in list
+    guardians = GuardianService.get_guardians_list(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\OneDrive\Documentos\projetos\eleveia-api\apps\contacts\services\guardian_service.py", line 55, in get_guardians_list
+    all_data = SigaCacheManager.get_or_fetch_all_siga_data(school_id, token)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\OneDrive\Documentos\projetos\eleveia-api\apps\contacts\integrations\siga_cache_manager.py", line 170, in get_or_fetch_all_siga_data
+    'guardians': cls.get_or_fetch_guardians(school_id, token),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\OneDrive\Documentos\projetos\eleveia-api\apps\contacts\integrations\siga_cache_manager.py", line 71, in get_or_fetch_guardians
+    cached = cache.get(cache_key)
+             ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\cache.py", line 92, in get
+    value = self._get(key, default, version, client)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\cache.py", line 36, in _decorator
+    raise e.__cause__  # noqa: B904
+    ^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\django_redis\client\default.py", line 298, in get
+    value = client.get(key)
+            ^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\commands\core.py", line 1923, in get
+    return self.execute_command("GET", name, keys=[name])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\client.py", line 657, in execute_command
+    return self._execute_command(*args, **options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\client.py", line 663, in _execute_command
+    conn = self.connection or pool.get_connection()
+                              ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\utils.py", line 196, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\connection.py", line 2603, in get_connection
+    connection.connect()
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\connection.py", line 846, in connect
+    self.connect_check_health(check_health=True)
+  File "C:\Users\lcpir\AppData\Local\pypoetry\Cache\virtualenvs\eleveia-api-169xUqfy-py3.11\Lib\site-packages\redis\connection.py", line 863, in connect_check_health
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error 10061 connecting to 127.0.0.1:6379. Nenhuma conexão pôde ser feita porque a máquina de destino as recusou ativamente.
+ERROR 2026-02-12 16:37:37,417 log 14824 5040 Internal Server Error: /api/v1/contacts/guardians/
+ERROR 2026-02-12 16:37:37,418 basehttp 14824 5040 "GET /api/v1/contacts/guardians/ HTTP/1.1" 500 11119
