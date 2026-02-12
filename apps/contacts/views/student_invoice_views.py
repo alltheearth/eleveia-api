@@ -1,5 +1,7 @@
-# apps/contacts/views_new.py
+# apps/contacts/views/student_invoice_views.py
+# VERSÃO CORRIGIDA - Melhor tratamento de erros e logging
 
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
@@ -9,61 +11,153 @@ from rest_framework import status
 from django.core.cache import cache
 from django.utils import timezone
 from core.permissions import IsSchoolStaff
-from collections import defaultdict
+
+logger = logging.getLogger(__name__)
 
 
 class StudentInvoiceView(APIView):
-    """Busca TODOS os boletos de TODOS os alunos da escola (com cache e paralelização)"""
+    """
+    Busca TODOS os boletos de TODOS os alunos da escola
+
+    CORREÇÕES APLICADAS:
+    - ✅ Sempre retorna dados do aluno (mesmo sem boletos)
+    - ✅ Logging detalhado para debug
+    - ✅ Melhor tratamento de erros
+    - ✅ Validações robustas
+    - ✅ Informações de cache claras
+    """
     permission_classes = [IsSchoolStaff]
 
     def get(self, request):
-        # Validação
+        """GET /api/contacts/students/invoices/"""
+
+        # ========================================
+        # 1. VALIDAÇÕES INICIAIS
+        # ========================================
         if not hasattr(request.user, 'profile'):
-            return Response({"error": "Usuário sem perfil"}, status=status.HTTP_403_FORBIDDEN)
+            logger.error(f"Usuário {request.user.username} sem perfil")
+            return Response(
+                {"error": "Usuário sem perfil"},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
         if not request.user.profile.school:
-            return Response({"error": "Usuário sem escola vinculada"}, status=status.HTTP_403_FORBIDDEN)
+            logger.error(f"Usuário {request.user.username} sem escola vinculada")
+            return Response(
+                {"error": "Usuário sem escola vinculada"},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
         school = request.user.profile.school
 
         if not school.application_token:
-            return Response({"error": "Escola sem token configurado"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.error(f"Escola {school.id} ({school.school_name}) sem token configurado")
+            return Response(
+                {
+                    "error": "Escola sem token configurado",
+                    "detail": "Configure o application_token no admin para integrar com o SIGA"
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
-        # Cache (1 hora)
+        logger.info(f"📊 Iniciando busca de boletos - Escola: {school.school_name} (ID: {school.id})")
+
+        # ========================================
+        # 2. VERIFICAR CACHE
+        # ========================================
         cache_key = f"all_invoices_school_{school.id}"
         cached_data = cache.get(cache_key)
 
         if cached_data:
+            logger.info(f"✓ Retornando dados do cache (1h)")
             return Response({
                 **cached_data,
                 'cached': True,
-                'cache_info': 'Dados do cache (atualizados a cada 1 hora)'
+                'cache_info': 'Dados do cache (atualizados a cada 1 hora)',
+                'cache_key': cache_key
             }, status=status.HTTP_200_OK)
 
-        # Buscar dados (com paralelização)
+        # ========================================
+        # 3. BUSCAR DADOS DA API SIGA
+        # ========================================
         try:
+            logger.info(f"🔄 Buscando dados do SIGA (pode demorar alguns segundos)...")
             invoices_data = self._fetch_all_invoices_parallel(school)
-            cache.set(cache_key, invoices_data, timeout=3600)
+
+            # Log de estatísticas
+            logger.info(f"✓ Busca concluída:")
+            logger.info(f"  - Alunos encontrados: {invoices_data['summary']['total_students']}")
+            logger.info(f"  - Boletos encontrados: {invoices_data['summary']['total_invoices']}")
+            logger.info(f"  - Pagos: {invoices_data['summary']['paid_count']}")
+            logger.info(f"  - Pendentes: {invoices_data['summary']['pending_count']}")
+
+            # Salvar no cache
+            cache.set(cache_key, invoices_data, timeout=3600)  # 1 hora
+            logger.info(f"💾 Dados salvos no cache por 1 hora")
 
             return Response({
                 **invoices_data,
                 'cached': False,
-                'cache_info': 'Dados recém-buscados do SIGA'
+                'cache_info': 'Dados recém-buscados do SIGA',
+                'cache_key': cache_key
             }, status=status.HTTP_200_OK)
 
-        except requests.exceptions.RequestException as e:
+        except requests.exceptions.Timeout:
+            logger.error("⏱️ Timeout na comunicação com SIGA")
             return Response(
-                {"error": f"Falha na comunicação com o SIGA: {str(e)}"},
+                {
+                    "error": "Timeout na comunicação com o SIGA",
+                    "detail": "O servidor SIGA demorou muito para responder. Tente novamente."
+                },
+                status=status.HTTP_504_GATEWAY_TIMEOUT
+            )
+
+        except requests.exceptions.ConnectionError:
+            logger.error("🔌 Erro de conexão com SIGA")
+            return Response(
+                {
+                    "error": "Erro de conexão com o SIGA",
+                    "detail": "Não foi possível conectar ao servidor SIGA. Verifique sua conexão."
+                },
                 status=status.HTTP_502_BAD_GATEWAY
             )
 
-    def _fetch_all_invoices_parallel(self, school):
-        """Busca boletos em PARALELO (muito mais rápido)"""
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"❌ Erro HTTP do SIGA: {e}")
+            return Response(
+                {
+                    "error": f"Erro na comunicação com o SIGA: HTTP {e.response.status_code}",
+                    "detail": "O servidor SIGA retornou um erro. Verifique o token de autenticação."
+                },
+                status=status.HTTP_502_BAD_GATEWAY
+            )
 
-        # 1. Buscar alunos
+        except Exception as e:
+            logger.error(f"💥 Erro inesperado ao buscar boletos: {str(e)}", exc_info=True)
+            return Response(
+                {
+                    "error": f"Erro inesperado: {str(e)}",
+                    "detail": "Ocorreu um erro inesperado. Contate o suporte."
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def _fetch_all_invoices_parallel(self, school):
+        """
+        Busca boletos em PARALELO (muito mais rápido)
+
+        CORREÇÃO: Sempre retorna dados do aluno, mesmo sem boletos
+        """
+
+        # ========================================
+        # 1. BUSCAR ALUNOS
+        # ========================================
+        logger.info(f"📚 Buscando lista de alunos...")
         students = self._fetch_students(school.application_token)
+        logger.info(f"✓ {len(students)} alunos encontrados")
 
         if not students:
+            logger.warning("⚠️ Nenhum aluno encontrado na API SIGA")
             return {
                 'students': [],
                 'summary': {
@@ -74,11 +168,17 @@ class StudentInvoiceView(APIView):
                     'completion_rate': 0,
                 },
                 'last_updated': timezone.now().isoformat(),
+                'warning': 'Nenhum aluno encontrado na API SIGA'
             }
 
-        # 2. Buscar boletos em PARALELO (10 threads simultâneas)
+        # ========================================
+        # 2. BUSCAR BOLETOS EM PARALELO
+        # ========================================
+        logger.info(f"💰 Buscando boletos de {len(students)} alunos (paralelizado em 10 threads)...")
+
         all_invoices = []
-        students_with_invoices = []
+        students_with_data = []
+        error_count = 0
 
         headers = {
             "Authorization": f"Bearer {school.application_token}",
@@ -98,37 +198,68 @@ class StudentInvoiceView(APIView):
             }
 
             # Processar resultados conforme completam
-            for future in as_completed(future_to_student):
+            for idx, future in enumerate(as_completed(future_to_student), 1):
                 student = future_to_student[future]
+
+                # Log de progresso a cada 50 alunos
+                if idx % 50 == 0:
+                    logger.info(f"  Progresso: {idx}/{len(students)} alunos processados...")
+
                 try:
                     result = future.result()
-                    if result:
-                        students_with_invoices.append(result['student_data'])
-                        all_invoices.extend(result['invoices'])
-                except Exception as exc:
-                    print(f"Erro ao buscar boletos do aluno {student.get('id')}: {exc}")
 
-        # 3. Calcular estatísticas
+                    # ✅ CORREÇÃO: Sempre adiciona o aluno (mesmo sem boletos)
+                    if result:
+                        students_with_data.append(result['student_data'])
+                        all_invoices.extend(result['invoices'])
+                    else:
+                        error_count += 1
+
+                except Exception as exc:
+                    error_count += 1
+                    student_id = student.get('id', 'N/A')
+                    student_name = student.get('nome', 'N/A')
+                    logger.error(f"❌ Erro ao buscar boletos do aluno {student_id} ({student_name}): {exc}")
+
+        # Log de erros
+        if error_count > 0:
+            logger.warning(f"⚠️ {error_count} alunos com erro ao buscar boletos")
+
+        # ========================================
+        # 3. CALCULAR ESTATÍSTICAS
+        # ========================================
         total_invoices = len(all_invoices)
-        paid = sum(1 for inv in all_invoices if inv['status_code'] == 'LIQ')
+        paid = sum(1 for inv in all_invoices if inv.get('status_code') == 'LIQ')
         pending = total_invoices - paid
 
+        logger.info(f"✓ Estatísticas calculadas: {total_invoices} boletos ({paid} pagos, {pending} pendentes)")
+
         return {
-            'students': students_with_invoices,
+            'students': students_with_data,
             'summary': {
-                'total_students': len(students_with_invoices),
+                'total_students': len(students_with_data),
+                'total_students_from_api': len(students),
                 'total_invoices': total_invoices,
                 'paid_count': paid,
                 'pending_count': pending,
                 'completion_rate': round((paid / total_invoices * 100), 2) if total_invoices > 0 else 0,
+                'errors': error_count,
             },
             'last_updated': timezone.now().isoformat(),
         }
 
     def _fetch_student_invoices(self, student, headers):
-        """Busca boletos de UM aluno (para execução paralela)"""
+        """
+        Busca boletos de UM aluno (para execução paralela)
+
+        CORREÇÃO: SEMPRE retorna dados do aluno, mesmo sem boletos ou com erro
+        """
         student_id = student.get('id')
+        student_name = student.get('nome', 'N/A')
+        student_registration = student.get('matricula', 'N/A')
+
         if not student_id:
+            logger.warning(f"⚠️ Aluno sem ID: {student_name}")
             return None
 
         try:
@@ -136,49 +267,103 @@ class StudentInvoiceView(APIView):
             params = {'id_aluno': student_id}
 
             response = requests.get(url, headers=headers, params=params, timeout=10)
+            response.raise_for_status()  # Levanta exceção se status != 200
 
-            if response.status_code == 200:
-                data = response.json()
-                invoices = data.get('resultados', [])
+            data = response.json()
+            invoices = data.get('resultados', [])
 
-                if invoices:
-                    student_invoices = {
-                        'student_id': student_id,
-                        'student_name': student.get('nome'),
-                        'student_registration': student.get('matricula'),
-                        'student_class': invoices[0].get('turma') if invoices else None,
-                        'invoices': []
-                    }
+            # ✅ SEMPRE cria estrutura do aluno (mesmo sem boletos)
+            student_invoices = {
+                'student_id': student_id,
+                'student_name': student_name,
+                'student_registration': student_registration,
+                'student_class': invoices[0].get('turma') if invoices else None,
+                'invoices': [],
+                'has_invoices': len(invoices) > 0,
+                'total_invoices': len(invoices)
+            }
 
-                    invoice_list = []
-                    for invoice in invoices:
-                        invoice_data = {
-                            "invoice_number": invoice.get("titulo"),
-                            "bank": invoice.get("nome_banco"),
-                            "due_date": invoice.get("dt_vencimento"),
-                            "payment_date": invoice.get("dt_pagamento"),
-                            "total_amount": invoice.get("valor_documento"),
-                            "received_amount": invoice.get("valor_recebido_total"),
-                            "status_code": invoice.get("situacao_titulo"),
-                            "installment": invoice.get("parcela_cobranca"),
-                            "digitable_line": invoice.get("linha_digitavel"),
-                            "payment_url": invoice.get("link_pagamento"),
-                        }
-                        student_invoices['invoices'].append(invoice_data)
-                        invoice_list.append(invoice_data)
+            invoice_list = []
 
-                    return {
-                        'student_data': student_invoices,
-                        'invoices': invoice_list
-                    }
+            # Processar boletos (se existirem)
+            for invoice in invoices:
+                invoice_data = {
+                    "invoice_number": invoice.get("titulo"),
+                    "bank": invoice.get("nome_banco"),
+                    "due_date": invoice.get("dt_vencimento"),
+                    "payment_date": invoice.get("dt_pagamento"),
+                    "total_amount": invoice.get("valor_documento"),
+                    "received_amount": invoice.get("valor_recebido_total"),
+                    "status_code": invoice.get("situacao_titulo"),
+                    "installment": invoice.get("parcela_cobranca"),
+                    "digitable_line": invoice.get("linha_digitavel"),
+                    "payment_url": invoice.get("link_pagamento"),
+                }
+                student_invoices['invoices'].append(invoice_data)
+                invoice_list.append(invoice_data)
 
-        except requests.exceptions.RequestException:
-            pass
+            return {
+                'student_data': student_invoices,
+                'invoices': invoice_list
+            }
 
-        return None
+        except requests.exceptions.Timeout:
+            logger.warning(f"⏱️ Timeout ao buscar boletos do aluno {student_id} ({student_name})")
+            # ✅ Retorna estrutura vazia em caso de timeout
+            return {
+                'student_data': {
+                    'student_id': student_id,
+                    'student_name': student_name,
+                    'student_registration': student_registration,
+                    'student_class': None,
+                    'invoices': [],
+                    'has_invoices': False,
+                    'total_invoices': 0,
+                    'error': 'Timeout'
+                },
+                'invoices': []
+            }
+
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"❌ Erro ao buscar boletos do aluno {student_id} ({student_name}): {str(e)}")
+            # ✅ Retorna estrutura vazia em caso de erro
+            return {
+                'student_data': {
+                    'student_id': student_id,
+                    'student_name': student_name,
+                    'student_registration': student_registration,
+                    'student_class': None,
+                    'invoices': [],
+                    'has_invoices': False,
+                    'total_invoices': 0,
+                    'error': str(e)
+                },
+                'invoices': []
+            }
+
+        except Exception as e:
+            logger.error(f"💥 Erro inesperado ao buscar boletos do aluno {student_id}: {str(e)}")
+            # ✅ Retorna estrutura vazia em caso de erro inesperado
+            return {
+                'student_data': {
+                    'student_id': student_id,
+                    'student_name': student_name,
+                    'student_registration': student_registration,
+                    'student_class': None,
+                    'invoices': [],
+                    'has_invoices': False,
+                    'total_invoices': 0,
+                    'error': 'Erro inesperado'
+                },
+                'invoices': []
+            }
 
     def _fetch_students(self, token):
-        """Busca todos os alunos (mantido igual)"""
+        """
+        Busca todos os alunos da API SIGA
+
+        Mantém paginação e tratamento de diferentes formatos de resposta
+        """
         url = "https://siga.activesoft.com.br/api/v0/lista_alunos_dados_sensiveis/"
         headers = {
             "Authorization": f"Bearer {token}",
@@ -188,18 +373,28 @@ class StudentInvoiceView(APIView):
         all_students = []
         next_url = url
 
-        while next_url:
-            response = requests.get(next_url, headers=headers, timeout=30)
-            response.raise_for_status()
-            data = response.json()
+        try:
+            while next_url:
+                response = requests.get(next_url, headers=headers, timeout=30)
+                response.raise_for_status()
+                data = response.json()
 
-            if isinstance(data, list):
-                all_students.extend(data)
-                break
-            elif isinstance(data, dict):
-                all_students.extend(data.get('results', []))
-                next_url = data.get('next')
-            else:
-                break
+                # Formato 1: Lista direta
+                if isinstance(data, list):
+                    all_students.extend(data)
+                    break
 
-        return all_students
+                # Formato 2: Objeto com paginação
+                elif isinstance(data, dict):
+                    all_students.extend(data.get('results', []))
+                    next_url = data.get('next')
+                else:
+                    logger.error(f"Formato de resposta inesperado da API SIGA: {type(data)}")
+                    break
+
+            logger.info(f"✓ {len(all_students)} alunos recuperados da API SIGA")
+            return all_students
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"❌ Erro ao buscar lista de alunos: {str(e)}")
+            raise
