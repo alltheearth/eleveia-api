@@ -1,26 +1,5 @@
 # apps/contacts/views/guardian_viewset.py
 
-"""
-ViewSet para Guardians (Responsáveis).
-
-Endpoints:
-- GET  /api/v1/contacts/guardians/           -> list()
-- GET  /api/v1/contacts/guardians/{id}/      -> retrieve()
-- GET  /api/v1/contacts/guardians/{id}/invoices/ -> invoices()
-
-Responsabilidades:
-- Receber HTTP requests
-- Validar permissões
-- Extrair query params
-- Chamar services
-- Retornar HTTP responses
-
-Não faz:
-- Lógica de negócio (delega para GuardianService)
-- Filtros complexos (delega para Selectors)
-- Cache (delega para SigaCacheManager)
-"""
-
 import logging
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -33,244 +12,113 @@ from ..services.guardian_service import GuardianService
 from ..selectors.guardian_selectors import GuardianSelector
 from ..serializers.guardian_list_serializer import GuardianListSerializer
 from ..serializers.guardian_serializers import GuardianDetailSerializer
-from ..serializers.invoice_serializers import InvoiceSummarySerializer
 
 logger = logging.getLogger(__name__)
 
 
 class GuardianPagination(PageNumberPagination):
-    """Paginação customizada para guardians."""
     page_size = 20
     page_size_query_param = 'page_size'
     max_page_size = 100
 
 
 class GuardianViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    ViewSet para gerenciamento de Guardians (Responsáveis).
-
-    Permissões: IsSchoolStaff (managers e operators)
-
-    Endpoints:
-    - list: Lista guardians com paginação
-    - retrieve: Detalhes completos de um guardian (com boletos)
-    - invoices: Apenas boletos de um guardian
-    """
+    """ViewSet para gerenciamento de Guardians."""
 
     permission_classes = [IsSchoolStaff]
     pagination_class = GuardianPagination
 
     def get_serializer_class(self):
-        """Retorna serializer apropriado por action."""
         if self.action == 'list':
             return GuardianListSerializer
         return GuardianDetailSerializer
 
     @extend_schema(
         summary="Lista guardians da escola",
-        description=(
-                "Retorna lista paginada de guardians (responsáveis) vinculados à escola. "
-                "Versão leve sem boletos para performance."
-        ),
         parameters=[
-            OpenApiParameter(
-                name='search',
-                description='Busca por nome, CPF ou nome do filho',
-                required=False,
-                type=str
-            ),
-            OpenApiParameter(
-                name='cpf',
-                description='Filtro exato por CPF',
-                required=False,
-                type=str
-            ),
-            OpenApiParameter(
-                name='ordering',
-                description='Ordenação (nome, -nome)',
-                required=False,
-                type=str
-            ),
+            OpenApiParameter(name='search', description='Busca por nome/CPF/filho', type=str),
+            OpenApiParameter(name='cpf', description='Filtro exato por CPF', type=str),
+            OpenApiParameter(name='ordering', description='Ordenação (nome, -nome)', type=str),
         ],
         tags=['Guardians']
     )
     def list(self, request):
-        """
-        GET /api/v1/contacts/guardians/
-
-        Lista guardians com filtros e paginação.
-
-        Query params:
-        - search: Busca em nome, CPF, email
-        - cpf: Filtro exato por CPF
-        - ordering: nome ou -nome
-        - page: Número da página
-        - page_size: Itens por página (max: 100)
-        """
-        # 1. Validações
+        """GET /api/v1/contacts/guardians/"""
         if not hasattr(request.user, 'profile') or not request.user.profile.school:
-            return Response(
-                {"error": "Usuário sem escola vinculada"},
-                status=status.HTTP_403_FORBIDDEN
-            )
+            return Response({"error": "Usuário sem escola vinculada"}, status=403)
 
         school = request.user.profile.school
         token = school.application_token
 
         if not token:
-            return Response(
-                {"error": "Escola sem token configurado"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-        # 2. Extrai query params
-        search = request.query_params.get('search', '').strip()
-        cpf = request.query_params.get('cpf', '').strip()
-        ordering = request.query_params.get('ordering', 'nome')
+            return Response({"error": "Escola sem token configurado"}, status=500)
 
         try:
-            # 3. Busca guardians (com cache)
-            guardians = GuardianService.get_guardians_list(
-                school_id=school.id,
-                token=token
-            )
+            guardians = GuardianService.get_guardians_list(school.id, token)
 
-            # 4. Aplica filtros
+            search = request.query_params.get('search', '').strip()
+            cpf = request.query_params.get('cpf', '').strip()
+            ordering = request.query_params.get('ordering', 'nome')
+
             if search:
                 guardians = GuardianSelector.filter_by_search(guardians, search)
-
             if cpf:
                 guardians = GuardianSelector.filter_by_cpf(guardians, cpf)
 
-            # 5. Ordena
             guardians = GuardianSelector.order_by(guardians, ordering)
 
-            # 6. Pagina
             page = self.paginate_queryset(guardians)
-
-            # 7. Serializa
             serializer = self.get_serializer(page, many=True)
 
-            # 8. Retorna paginado
             return self.get_paginated_response(serializer.data)
 
         except Exception as e:
             logger.exception(f"Error listing guardians: {e}")
-            return Response(
-                {"error": "Erro ao buscar guardians"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({"error": "Erro ao buscar guardians"}, status=500)
 
     @extend_schema(
         summary="Detalhes completos de um guardian",
-        description=(
-                "Retorna informações completas de um guardian incluindo:\n"
-                "- Dados pessoais completos\n"
-                "- Endereço\n"
-                "- Lista de filhos com dados acadêmicos\n"
-                "- Boletos de cada filho\n"
-                "- Resumos financeiros"
-        ),
         tags=['Guardians']
     )
     def retrieve(self, request, pk=None):
-        """
-        GET /api/v1/contacts/guardians/{id}/
-
-        Retorna detalhes completos de um guardian (com boletos).
-        """
-        # 1. Validações
+        """GET /api/v1/contacts/guardians/{id}/"""
         if not hasattr(request.user, 'profile') or not request.user.profile.school:
-            return Response(
-                {"error": "Usuário sem escola vinculada"},
-                status=status.HTTP_403_FORBIDDEN
-            )
+            return Response({"error": "Usuário sem escola vinculada"}, status=403)
 
         school = request.user.profile.school
         token = school.application_token
 
-        if not token:
-            return Response(
-                {"error": "Escola sem token configurado"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
         try:
             guardian_id = int(pk)
-        except ValueError:
-            return Response(
-                {"error": "ID inválido"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            guardian = GuardianService.get_guardian_detail(guardian_id, school.id, token, True)
 
-        try:
-            # 2. Busca guardian com boletos
-            guardian = GuardianService.get_guardian_detail(
-                guardian_id=guardian_id,
-                school_id=school.id,
-                token=token,
-                include_invoices=True
-            )
-
-            # 3. Verifica se encontrou
             if not guardian:
-                return Response(
-                    {"error": "Guardian não encontrado"},
-                    status=status.HTTP_404_NOT_FOUND
-                )
+                return Response({"error": "Guardian não encontrado"}, status=404)
 
-            # 4. Serializa
             serializer = self.get_serializer(guardian)
-
-            # 5. Retorna
-            return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response(serializer.data)
 
         except Exception as e:
             logger.exception(f"Error retrieving guardian {pk}: {e}")
-            return Response(
-                {"error": "Erro ao buscar guardian"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({"error": "Erro ao buscar guardian"}, status=500)
 
-    @extend_schema(
-        summary="Resumo de boletos de um guardian",
-        description="Retorna apenas informações financeiras (boletos) de um guardian",
-        tags=['Guardians']
-    )
+    @extend_schema(summary="Resumo de boletos", tags=['Guardians'])
     @action(detail=True, methods=['get'])
     def invoices(self, request, pk=None):
-        """
-        GET /api/v1/contacts/guardians/{id}/invoices/
-
-        Retorna apenas boletos e resumos (sem dados pessoais).
-        """
-        # 1. Busca guardian completo
+        """GET /api/v1/contacts/guardians/{id}/invoices/"""
         if not hasattr(request.user, 'profile') or not request.user.profile.school:
-            return Response(
-                {"error": "Usuário sem escola vinculada"},
-                status=status.HTTP_403_FORBIDDEN
-            )
+            return Response({"error": "Usuário sem escola vinculada"}, status=403)
 
         school = request.user.profile.school
         token = school.application_token
 
         try:
             guardian_id = int(pk)
-
-            guardian = GuardianService.get_guardian_detail(
-                guardian_id=guardian_id,
-                school_id=school.id,
-                token=token,
-                include_invoices=True
-            )
+            guardian = GuardianService.get_guardian_detail(guardian_id, school.id, token, True)
 
             if not guardian:
-                return Response(
-                    {"error": "Guardian não encontrado"},
-                    status=status.HTTP_404_NOT_FOUND
-                )
+                return Response({"error": "Guardian não encontrado"}, status=404)
 
-            # 2. Extrai apenas dados financeiros
             result = {
                 'guardian_id': guardian['id'],
                 'guardian_name': guardian['nome'],
@@ -287,11 +135,8 @@ class GuardianViewSet(viewsets.ReadOnlyModelViewSet):
                 ]
             }
 
-            return Response(result, status=status.HTTP_200_OK)
+            return Response(result)
 
         except Exception as e:
-            logger.exception(f"Error getting invoices for guardian {pk}: {e}")
-            return Response(
-                {"error": "Erro ao buscar boletos"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            logger.exception(f"Error getting invoices: {e}")
+            return Response({"error": "Erro ao buscar boletos"}, status=500)
