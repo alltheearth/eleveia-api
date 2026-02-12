@@ -1,6 +1,6 @@
 # apps/contacts/selectors/__init__.py
 from .contact_selector import ContatoSelector
-from .guardian_selector import GuardianSelector
+from .guardian_selectors import GuardianSelector
 
 __all__ = [
     'ContatoSelector',
