@@ -1,8 +1,9 @@
 # apps/contacts/views/student_invoice_views.py
-# VERSÃO CORRIGIDA - Melhor tratamento de erros e logging
+# VERSÃO CORRIGIDA - Funciona SEM Redis (usa cache local como fallback)
 
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta
 
 import requests
 from rest_framework.views import APIView
@@ -14,6 +15,51 @@ from core.permissions import IsSchoolStaff
 
 logger = logging.getLogger(__name__)
 
+# ========================================
+# CACHE LOCAL (fallback quando Redis não está disponível)
+# ========================================
+_local_cache = {}
+_local_cache_timeout = {}
+
+
+def get_from_cache(key):
+    """Tenta pegar do Redis, se falhar usa cache local"""
+    try:
+        # Tentar Redis primeiro
+        data = cache.get(key)
+        if data:
+            logger.info(f"✓ Dados recuperados do Redis cache")
+            return data
+    except Exception as e:
+        logger.warning(f"Redis indisponível: {str(e)[:100]}")
+
+    # Fallback: cache local
+    if key in _local_cache:
+        if key in _local_cache_timeout:
+            if timezone.now() < _local_cache_timeout[key]:
+                logger.info(f"✓ Dados recuperados do cache local (fallback)")
+                return _local_cache[key]
+            else:
+                # Expirou
+                del _local_cache[key]
+                del _local_cache_timeout[key]
+
+    return None
+
+
+def set_in_cache(key, value, timeout=3600):
+    """Tenta salvar no Redis, se falhar usa cache local"""
+    try:
+        # Tentar Redis primeiro
+        cache.set(key, value, timeout=timeout)
+        logger.info(f"💾 Dados salvos no Redis cache")
+    except Exception as e:
+        logger.warning(f"Redis indisponível, usando cache local: {str(e)[:100]}")
+        # Fallback: cache local
+        _local_cache[key] = value
+        _local_cache_timeout[key] = timezone.now() + timedelta(seconds=timeout)
+        logger.info(f"💾 Dados salvos no cache local (fallback por {timeout}s)")
+
 
 class StudentInvoiceView(APIView):
     """
@@ -21,10 +67,10 @@ class StudentInvoiceView(APIView):
 
     CORREÇÕES APLICADAS:
     - ✅ Sempre retorna dados do aluno (mesmo sem boletos)
+    - ✅ Funciona SEM Redis (usa cache local como fallback)
     - ✅ Logging detalhado para debug
     - ✅ Melhor tratamento de erros
     - ✅ Validações robustas
-    - ✅ Informações de cache claras
     """
     permission_classes = [IsSchoolStaff]
 
@@ -63,13 +109,13 @@ class StudentInvoiceView(APIView):
         logger.info(f"📊 Iniciando busca de boletos - Escola: {school.school_name} (ID: {school.id})")
 
         # ========================================
-        # 2. VERIFICAR CACHE
+        # 2. VERIFICAR CACHE (com fallback local)
         # ========================================
         cache_key = f"all_invoices_school_{school.id}"
-        cached_data = cache.get(cache_key)
+        cached_data = get_from_cache(cache_key)
 
         if cached_data:
-            logger.info(f"✓ Retornando dados do cache (1h)")
+            logger.info(f"✓ Retornando dados do cache")
             return Response({
                 **cached_data,
                 'cached': True,
@@ -91,9 +137,8 @@ class StudentInvoiceView(APIView):
             logger.info(f"  - Pagos: {invoices_data['summary']['paid_count']}")
             logger.info(f"  - Pendentes: {invoices_data['summary']['pending_count']}")
 
-            # Salvar no cache
-            cache.set(cache_key, invoices_data, timeout=3600)  # 1 hora
-            logger.info(f"💾 Dados salvos no cache por 1 hora")
+            # Salvar no cache (com fallback)
+            set_in_cache(cache_key, invoices_data, timeout=3600)  # 1 hora
 
             return Response({
                 **invoices_data,
