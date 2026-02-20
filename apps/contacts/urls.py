@@ -1,78 +1,59 @@
 # apps/contacts/urls.py
 
 """
-✨ URLs ATUALIZADAS - Rota Unificada
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+URLs do módulo Contacts — VERSÃO DEFINITIVA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-ANTES (rotas antigas - REMOVIDAS):
-- /students/guardians/  → StudentGuardianView
-- /students/invoices/   → StudentInvoiceView
-- /guardians/           → StudentsGuardiansView
+ROTAS GERADAS:
 
-DEPOIS (rota única - NOVA):
-- /guardians/           → GuardianUnifiedView
+Guardians (Responsáveis) — via Router:
+  GET    /api/v1/contacts/guardians/                  → list
+  GET    /api/v1/contacts/guardians/{id}/             → retrieve
+  GET    /api/v1/contacts/guardians/{id}/invoices/    → invoices
+  GET    /api/v1/contacts/guardians/stats/            → stats
+  POST   /api/v1/contacts/guardians/refresh/          → refresh
 
-Features da nova rota:
-- ✅ Responsáveis + Filhos + Boletos integrados
-- ✅ Filtros avançados (search, email, CPF, telefone, situação)
-- ✅ Ordenação alfabética automática
-- ✅ Cache 2 horas
-- ✅ Paginação 20/página
-- ✅ Documentação OpenAPI completa
+Contatos (CRUD local) — via Router:
+  GET    /api/v1/contacts/contatos/                   → list
+  POST   /api/v1/contacts/contatos/                   → create
+  GET    /api/v1/contacts/contatos/{id}/              → retrieve
+  PUT    /api/v1/contacts/contatos/{id}/              → update
+  PATCH  /api/v1/contacts/contatos/{id}/              → partial_update
+  DELETE /api/v1/contacts/contatos/{id}/              → destroy
+  GET    /api/v1/contacts/contatos/ativos/            → ativos
+
+Dashboard:
+  GET    /api/v1/contacts/dashboard/                  → dashboard stats
 """
 
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 from .views.contact_views import ContatoViewSet
-from .views.guardian_unified_view import GuardianUnifiedView
+from .views.guardian_viewset import GuardianViewSet
+from .views.dashboard_views import SchoolDashboardView
 
 # ===================================================================
-# ROUTER PARA VIEWSETS
+# ROUTER
 # ===================================================================
+
 router = DefaultRouter()
 
-# ✅ CRUD de Contatos (antes não estava registrado!)
+# Guardians — o ViewSet cuida de list, retrieve, invoices, stats, refresh
+router.register(r'guardians', GuardianViewSet, basename='guardian')
+
+# Contatos — CRUD local (não depende do SIGA)
 router.register(r'contatos', ContatoViewSet, basename='contato')
 
 # ===================================================================
 # URL PATTERNS
 # ===================================================================
-urlpatterns = [
-    # ✨ NOVA ROTA UNIFICADA - Responsáveis + Filhos + Boletos
-    path(
-        'guardians/',
-        GuardianUnifiedView.as_view(),
-        name='guardians-unified'
-    ),
 
-    # ✅ CRUD de Contatos (ViewSet)
+urlpatterns = [
+    # Dashboard (view isolada, não precisa de router)
+    path('dashboard/', SchoolDashboardView.as_view(), name='school-dashboard'),
+
+    # Todas as rotas do router
     path('', include(router.urls)),
 ]
-
-# ===================================================================
-# ROTAS DISPONÍVEIS APÓS ATUALIZAÇÃO:
-# ===================================================================
-#
-# ViewSet de Contatos:
-# - GET    /api/v1/contacts/contatos/              → Lista contatos
-# - GET    /api/v1/contacts/contatos/{id}/         → Detalhes de contato
-# - POST   /api/v1/contacts/contatos/              → Cria contato
-# - PUT    /api/v1/contacts/contatos/{id}/         → Atualiza contato (full)
-# - PATCH  /api/v1/contacts/contatos/{id}/         → Atualiza contato (partial)
-# - DELETE /api/v1/contacts/contatos/{id}/         → Remove contato
-# - GET    /api/v1/contacts/contatos/ativos/       → Ação customizada (apenas ativos)
-#
-# Responsáveis Unificados:
-# - GET    /api/v1/contacts/guardians/             → Lista responsáveis (com filtros)
-#
-# Exemplos de uso:
-# - GET /api/v1/contacts/guardians/?search=Maria
-# - GET /api/v1/contacts/guardians/?email=ana@example.com
-# - GET /api/v1/contacts/guardians/?cpf=12345678900
-# - GET /api/v1/contacts/guardians/?telefone=11987654321
-# - GET /api/v1/contacts/guardians/?tem_boleto_aberto=true
-# - GET /api/v1/contacts/guardians/?tem_doc_faltando=true
-# - GET /api/v1/contacts/guardians/?search=Silva&tem_boleto_aberto=true
-# - GET /api/v1/contacts/guardians/?page=2&page_size=50
-#
-# ===================================================================

@@ -1,218 +1,302 @@
 # apps/contacts/services/invoice_service.py
 
 """
-Serviço para lógica de negócio de Boletos (Invoices).
+Serviço de Boletos (Invoices).
 
 Responsabilidades:
-- Buscar boletos de um aluno
-- Buscar boletos de múltiplos alunos (paralelo)
+- Buscar boletos de alunos na API SIGA
+- Formatar dados brutos para o contrato da API
 - Calcular resumos financeiros
-- Mapear status de boletos
+- Busca paralela para múltiplos alunos
+- Filtros por ano, situação e filho
 
-Não faz:
-- Renderização HTTP
+NÃO faz:
 - Cache (delega para SigaCacheManager)
-- Agregação de guardians
+- Renderização HTTP
+- Agregação de responsáveis
 """
 
 import logging
 import requests
 from typing import List, Dict, Optional
+from decimal import Decimal
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from django.utils import timezone
 
 from ..integrations.siga_cache_manager import SigaCacheManager
 
 logger = logging.getLogger(__name__)
 
+# Mapeamento de situação
+SITUACAO_DISPLAY = {
+    'ABE': 'Aberto',
+    'LIQ': 'Liquidado',
+    'CAN': 'Cancelado',
+}
+
+SIGA_INVOICES_URL = "https://siga.activesoft.com.br/api/v0/informacoes_boleto/"
+
 
 class InvoiceService:
     """Serviço para gerenciamento de boletos."""
 
-    # Mapeamento de status
-    STATUS_MAP = {
-        'ABE': 'Aberto',
-        'LIQ': 'Liquidado',
-        'CAN': 'Cancelado',
-    }
+    # -----------------------------------------------------------------
+    # BUSCA DE BOLETOS (um aluno)
+    # -----------------------------------------------------------------
 
     @classmethod
     def get_student_invoices(
-            cls,
-            student_id: int,
-            token: str,
-            use_cache: bool = True
+        cls,
+        student_id: int,
+        token: str,
+        use_cache: bool = True,
     ) -> List[Dict]:
         """
         Busca boletos de um aluno específico.
 
         Args:
-            student_id: ID do aluno
+            student_id: ID do aluno no SIGA
             token: Token de autenticação SIGA
-            use_cache: Se deve usar cache (default: True)
+            use_cache: Se deve usar cache Redis
 
         Returns:
-            Lista de boletos formatados
+            Lista de boletos formatados (contrato BoletoSerializer)
         """
-        # Tenta cache
+        # Tentar cache
         if use_cache:
             cached = SigaCacheManager.get_or_set_student_invoices(student_id)
-            if cached:
+            if cached is not None:
                 return cached
 
-        # Busca do SIGA
+        # Buscar do SIGA
         try:
-            url = "https://siga.activesoft.com.br/api/v0/informacoes_boleto/"
             headers = {
                 "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
             }
-            params = {'id_aluno': student_id}
 
-            response = requests.get(url, headers=headers, params=params, timeout=10)
+            response = requests.get(
+                SIGA_INVOICES_URL,
+                headers=headers,
+                params={'id_aluno': student_id},
+                timeout=10,
+            )
             response.raise_for_status()
 
             data = response.json()
-            invoices_raw = data.get('resultados', [])
+            raw_invoices = data.get('resultados', [])
 
-            # Formata boletos
-            invoices_formatted = [
-                cls._format_invoice(invoice)
-                for invoice in invoices_raw
-            ]
+            # Formatar cada boleto
+            formatted = [cls._format_invoice(inv) for inv in raw_invoices]
 
-            # Cacheia
+            # Cachear
             if use_cache:
                 SigaCacheManager.get_or_set_student_invoices(
-                    student_id,
-                    invoices_formatted
+                    student_id, formatted
                 )
 
-            logger.info(f"Fetched {len(invoices_formatted)} invoices for student {student_id}")
-            return invoices_formatted
+            logger.debug(
+                f"Fetched {len(formatted)} invoices for student {student_id}"
+            )
+            return formatted
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error fetching invoices for student {student_id}: {e}")
+            logger.error(
+                f"Error fetching invoices for student {student_id}: {e}"
+            )
             return []
+
+    # -----------------------------------------------------------------
+    # BUSCA DE BOLETOS (múltiplos alunos — PARALELO)
+    # -----------------------------------------------------------------
 
     @classmethod
     def get_multiple_students_invoices(
-            cls,
-            student_ids: List[int],
-            token: str,
-            max_workers: int = 10
+        cls,
+        student_ids: List[int],
+        token: str,
+        max_workers: int = 10,
     ) -> Dict[int, List[Dict]]:
         """
-        Busca boletos de múltiplos alunos EM PARALELO.
+        Busca boletos de múltiplos alunos em paralelo.
 
         Args:
-            student_ids: Lista de IDs de alunos
-            token: Token de autenticação SIGA
-            max_workers: Número de threads paralelas (default: 10)
+            student_ids: Lista de IDs dos alunos
+            token: Token SIGA
+            max_workers: Threads paralelas (default: 10)
 
         Returns:
-            Dict mapeando student_id -> lista de boletos
+            Dict {student_id: [boletos_formatados]}
         """
-        results = {}
+        if not student_ids:
+            return {}
+
+        result = {}
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Cria futures
-            future_to_student = {
-                executor.submit(cls.get_student_invoices, student_id, token): student_id
-                for student_id in student_ids
+            futures = {
+                executor.submit(cls.get_student_invoices, sid, token): sid
+                for sid in student_ids
             }
 
-            # Processa conforme completam
-            for future in as_completed(future_to_student):
-                student_id = future_to_student[future]
+            for future in as_completed(futures):
+                student_id = futures[future]
                 try:
                     invoices = future.result()
-                    results[student_id] = invoices
+                    result[student_id] = invoices
                 except Exception as e:
-                    logger.error(f"Error processing student {student_id}: {e}")
-                    results[student_id] = []
+                    logger.error(
+                        f"Error fetching invoices for student {student_id}: {e}"
+                    )
+                    result[student_id] = []
 
-        logger.info(f"Fetched invoices for {len(results)} students in parallel")
-        return results
+        return result
+
+    # -----------------------------------------------------------------
+    # ENDPOINT: GET /guardians/{id}/invoices/
+    # -----------------------------------------------------------------
 
     @classmethod
-    def _format_invoice(cls, invoice_raw: Dict) -> Dict:
+    def get_guardian_invoices(
+        cls,
+        guardian_id: int,
+        school_id: int,
+        token: str,
+        ano: Optional[str] = None,
+        situacao: Optional[str] = None,
+        filho_id: Optional[int] = None,
+    ) -> Optional[Dict]:
         """
-        Formata um boleto do formato SIGA para formato API.
-
-        Args:
-            invoice_raw: Boleto no formato SIGA
+        Busca boletos de um guardian (todos os filhos).
+        Usado pela rota GET /guardians/{id}/invoices/
 
         Returns:
-            Boleto formatado
+            Dict no formato GuardianInvoicesResponseSerializer ou None
         """
-        return {
-            # Identificação
-            'titulo': invoice_raw.get('titulo'),
-            'parcela': invoice_raw.get('parcela_cobranca', '').strip(),
+        from .guardian_service import GuardianService
 
-            # Datas (ISO 8601)
-            'vencimento': invoice_raw.get('dt_vencimento'),
-            'pagamento': invoice_raw.get('dt_pagamento'),
-            'emissao': invoice_raw.get('dt_documento'),
+        # Buscar guardian (do cache da lista, sem boletos)
+        guardians = GuardianService.get_guardians_list(school_id, token)
+        guardian = next(
+            (g for g in guardians if g['id'] == guardian_id), None
+        )
 
-            # Valores
-            'valor_original': float(invoice_raw.get('valor_documento', 0)),
-            'valor_pago': float(invoice_raw.get('valor_recebido_total', 0)),
-            'valor_multa': float(invoice_raw.get('valor_recebido_multa', 0)),
-            'valor_juros': float(invoice_raw.get('valor_recebido_juros', 0)),
+        if not guardian:
+            return None
 
-            # Status
-            'situacao': invoice_raw.get('situacao_titulo'),
-            'situacao_display': cls.STATUS_MAP.get(
-                invoice_raw.get('situacao_titulo'),
-                'Desconhecido'
-            ),
+        filhos = guardian.get('filhos', [])
 
-            # Banco
-            'banco': invoice_raw.get('nome_banco'),
-            'codigo_banco': invoice_raw.get('cod_banco'),
-            'agencia': invoice_raw.get('agencia_codigo_beneficiario'),
+        # Filtrar por filho específico
+        if filho_id:
+            filhos = [f for f in filhos if f.get('id') == filho_id]
 
-            # Pagamento
-            'linha_digitavel': invoice_raw.get('linha_digitavel'),
-            'codigo_barras': invoice_raw.get('codigo_barras'),
-            'link_pagamento': invoice_raw.get('link_pagamento'),
+        # Buscar boletos de todos os filhos
+        student_ids = [f['id'] for f in filhos if f.get('id')]
+        invoices_by_student = cls.get_multiple_students_invoices(
+            student_ids, token
+        )
 
-            # Aluno (redundante mas útil)
-            'aluno_nome': invoice_raw.get('aluno'),
-            'aluno_matricula': invoice_raw.get('aluno_matricula'),
+        # Montar resposta
+        filhos_response = []
+        total_geral = {
+            'total_boletos': 0,
+            'total_abertos': 0,
+            'valor_total_pendente': Decimal('0'),
+            'valor_total_pago': Decimal('0'),
         }
+
+        for filho in filhos:
+            sid = filho.get('id')
+            invoices = invoices_by_student.get(sid, [])
+
+            # Aplicar filtros
+            if ano:
+                invoices = [
+                    inv for inv in invoices
+                    if inv.get('vencimento', '').startswith(ano)
+                ]
+
+            if situacao and situacao != 'todos':
+                invoices = [
+                    inv for inv in invoices
+                    if inv.get('situacao') == situacao
+                ]
+
+            resumo = cls.calculate_student_summary(invoices)
+
+            filhos_response.append({
+                'id': sid,
+                'nome': filho.get('nome'),
+                'matricula': filho.get('matricula'),
+                'boletos': invoices,
+                'resumo': resumo,
+            })
+
+            # Acumular totais
+            total_geral['total_boletos'] += resumo.get('total', 0)
+            total_geral['total_abertos'] += resumo.get('abertos', 0)
+            total_geral['valor_total_pendente'] += Decimal(
+                str(resumo.get('valor_pendente', 0))
+            )
+            total_geral['valor_total_pago'] += Decimal(
+                str(resumo.get('valor_pago', 0))
+            )
+
+        return {
+            'guardian_id': guardian_id,
+            'guardian_nome': guardian.get('nome'),
+            'ano_filtro': ano,
+            'filhos': filhos_response,
+            'resumo_geral': {
+                'total_filhos': len(filhos_response),
+                'total_boletos': total_geral['total_boletos'],
+                'total_abertos': total_geral['total_abertos'],
+                'valor_total_pendente': float(
+                    total_geral['valor_total_pendente']
+                ),
+                'valor_total_pago': float(total_geral['valor_total_pago']),
+            },
+        }
+
+    # -----------------------------------------------------------------
+    # CÁLCULOS: resumos financeiros
+    # -----------------------------------------------------------------
 
     @classmethod
     def calculate_student_summary(cls, invoices: List[Dict]) -> Dict:
         """
-        Calcula resumo financeiro de um aluno.
-
-        Args:
-            invoices: Lista de boletos do aluno
-
-        Returns:
-            Dict com resumo
+        Calcula resumo financeiro de uma lista de boletos.
+        Usado para resumo de cada filho.
         """
-        total = len(invoices)
-        pagos = sum(1 for inv in invoices if inv['situacao'] == 'LIQ')
-        abertos = sum(1 for inv in invoices if inv['situacao'] == 'ABE')
-        cancelados = sum(1 for inv in invoices if inv['situacao'] == 'CAN')
+        if not invoices:
+            return {
+                'total': 0,
+                'pagos': 0,
+                'abertos': 0,
+                'cancelados': 0,
+                'valor_total': 0,
+                'valor_pago': 0,
+                'valor_pendente': 0,
+            }
 
-        valor_total = sum(inv['valor_original'] for inv in invoices)
-        valor_pago = sum(inv['valor_pago'] for inv in invoices)
+        pagos = [i for i in invoices if i.get('situacao') == 'LIQ']
+        abertos = [i for i in invoices if i.get('situacao') == 'ABE']
+        cancelados = [i for i in invoices if i.get('situacao') == 'CAN']
+
+        valor_total = sum(
+            float(i.get('valor', 0) or 0) for i in invoices
+        )
+        valor_pago = sum(
+            float(i.get('valor_pago', 0) or 0) for i in pagos
+        )
         valor_pendente = sum(
-            inv['valor_original']
-            for inv in invoices
-            if inv['situacao'] == 'ABE'
+            float(i.get('valor', 0) or 0) for i in abertos
         )
 
         return {
-            'total': total,
-            'pagos': pagos,
-            'abertos': abertos,
-            'cancelados': cancelados,
+            'total': len(invoices),
+            'pagos': len(pagos),
+            'abertos': len(abertos),
+            'cancelados': len(cancelados),
             'valor_total': round(valor_total, 2),
             'valor_pago': round(valor_pago, 2),
             'valor_pendente': round(valor_pendente, 2),
@@ -221,31 +305,75 @@ class InvoiceService:
     @classmethod
     def calculate_guardian_summary(cls, filhos: List[Dict]) -> Dict:
         """
-        Calcula resumo financeiro geral de um guardian (todos os filhos).
-
-        Args:
-            filhos: Lista de filhos com campo 'boletos' e 'resumo_boletos'
-
-        Returns:
-            Dict com resumo geral
+        Calcula resumo geral de um guardian (todos os filhos).
         """
-        total_filhos = len(filhos)
-        total_boletos = sum(filho.get('resumo_boletos', {}).get('total', 0) for filho in filhos)
-        pagos = sum(filho.get('resumo_boletos', {}).get('pagos', 0) for filho in filhos)
-        abertos = sum(filho.get('resumo_boletos', {}).get('abertos', 0) for filho in filhos)
-        cancelados = sum(filho.get('resumo_boletos', {}).get('cancelados', 0) for filho in filhos)
+        total = pagos = abertos = cancelados = 0
+        valor_total = valor_pago = valor_pendente = 0.0
 
-        valor_total = sum(filho.get('resumo_boletos', {}).get('valor_total', 0) for filho in filhos)
-        valor_pago = sum(filho.get('resumo_boletos', {}).get('valor_pago', 0) for filho in filhos)
-        valor_pendente = sum(filho.get('resumo_boletos', {}).get('valor_pendente', 0) for filho in filhos)
+        for filho in filhos:
+            resumo = filho.get('resumo_boletos', {})
+            total += resumo.get('total', 0)
+            pagos += resumo.get('pagos', 0)
+            abertos += resumo.get('abertos', 0)
+            cancelados += resumo.get('cancelados', 0)
+            valor_total += float(resumo.get('valor_total', 0))
+            valor_pago += float(resumo.get('valor_pago', 0))
+            valor_pendente += float(resumo.get('valor_pendente', 0))
 
         return {
-            'total_filhos': total_filhos,
-            'total_boletos': total_boletos,
-            'pagos': pagos,
-            'abertos': abertos,
-            'cancelados': cancelados,
+            'total_boletos': total,
+            'total_pagos': pagos,
+            'total_abertos': abertos,
+            'total_cancelados': cancelados,
             'valor_total': round(valor_total, 2),
             'valor_pago': round(valor_pago, 2),
             'valor_pendente': round(valor_pendente, 2),
+        }
+
+    # -----------------------------------------------------------------
+    # FORMATAÇÃO: SIGA → contrato da API
+    # -----------------------------------------------------------------
+
+    @classmethod
+    def _format_invoice(cls, raw: Dict) -> Dict:
+        """
+        Formata um boleto bruto do SIGA para o contrato BoletoSerializer.
+
+        Mapeamento:
+            SIGA                    → API
+            titulo                  → numero
+            parcela_cobranca        → parcela
+            dt_vencimento           → vencimento
+            valor_documento         → valor
+            valor_recebido_total    → valor_pago
+            valor_recebido_multa    → valor_multa
+            valor_recebido_juros    → valor_juros
+            situacao_titulo         → situacao
+            nome_banco              → banco
+            linha_digitavel         → linha_digitavel
+            link_pagamento          → link_pagamento
+            nome_servico            → servico
+        """
+        situacao = (raw.get('situacao_titulo') or '').strip()
+
+        # Data de vencimento (só data, sem horário)
+        vencimento_raw = raw.get('dt_vencimento')
+        vencimento = None
+        if vencimento_raw:
+            vencimento = str(vencimento_raw).split('T')[0]
+
+        return {
+            'numero': raw.get('titulo'),
+            'parcela': (raw.get('parcela_cobranca') or '').strip(),
+            'vencimento': vencimento,
+            'valor': float(raw.get('valor_documento', 0) or 0),
+            'valor_pago': float(raw.get('valor_recebido_total', 0) or 0),
+            'valor_multa': float(raw.get('valor_recebido_multa', 0) or 0),
+            'valor_juros': float(raw.get('valor_recebido_juros', 0) or 0),
+            'situacao': situacao,
+            'situacao_display': SITUACAO_DISPLAY.get(situacao, situacao),
+            'banco': raw.get('nome_banco'),
+            'linha_digitavel': raw.get('linha_digitavel'),
+            'link_pagamento': raw.get('link_pagamento'),
+            'servico': raw.get('nome_servico'),
         }
